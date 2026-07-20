@@ -12,7 +12,8 @@
     "data:risk": "node scripts/update-relative-risk.mjs",
     "data:tree": "node scripts/build-tree.mjs",
     "data:skygrid": "node scripts/build-skygrid.mjs",
-    "data:exponential": "node scripts/build-exponential.mjs"
+    "data:exponential": "node scripts/build-exponential.mjs",
+    "data:linelist": "node scripts/filter-linelist.mjs"
   },
   "devDependencies": {
     "mapshaper": "^0.7.22",
