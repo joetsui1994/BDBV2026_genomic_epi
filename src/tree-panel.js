@@ -1,0 +1,250 @@
+// Embeds PearTree via the global bundle (window.PearTreeEmbed) and exposes a
+// small, app-facing interface. Locks the tree to fit-to-window with explicit
+// paddings so its time axis aligns with the time-series panel.
+
+import { bandPixels } from './tree-band.js';
+
+const TREE_URL = `${import.meta.env.BASE_URL}data/ituri-tree.ptree`;
+
+export const TREE_PAD_LEFT = 20;
+export const TREE_PAD_RIGHT = 20;
+
+// Hard floor on how far the tree canvas may compress (defensive; the chart's
+// extentFraction already clamps to 0.4). 1 = full width.
+const WIDTH_FLOOR = 0.3;
+
+/**
+ * @param {string} containerId  id of the element to embed into
+ * @returns {Promise<{selectByLocation, clear, onSelect}>}
+ */
+export async function createTreePanel(containerId, meta = null) {
+  if (!window.PearTreeEmbed) {
+    throw new Error('PearTreeEmbed not found — is public/peartree.bundle.min.js loaded?');
+  }
+  const tree = await window.PearTreeEmbed.embed({
+    container: containerId,
+    treeUrl: TREE_URL,
+    filename: 'Ituri.ptree',
+    // Fill the container's height (which is set by the flex/absolute layout)
+    // instead of the embed default of 600px, so the tree follows vertical resizes.
+    height: '100%',
+    // Light chrome; we retint the --pt-* interface variables in style.css.
+    ui: {
+      theme: 'light',
+      // Keep-list of toolbar sections (omitted groups are hidden):
+      //  · 'annotations' — Manage palettes / Manage filters / Curate annotations
+      //  · 'hideShow'    — collapse/expand subtree + collapse/hide a subclade
+      //  · 'colour'      — colour picker / colour selected nodes / highlight clade
+      //  · 'order'       — order branches ascending/descending
+      //  · 'rotate'      — rotate node / subtree
+      //  · 'reroot'      — invert selection / selection mode / reroot / midpoint / temporal root
+      //  · 'navigation'  — back/forward history / drill / climb / home
+      // The search bar (separate "filter" section) is retained.
+      toolbarSections: [
+        'fileOps', 'nodeInfo', 'zoom', 'filter', 'panels',
+      ],
+    },
+    settings: {
+      // Visual theme: PearTree's built-in "O'Toole" palette (drives branch/tip/
+      // node/axis colours and background).
+      theme: "O'Toole",
+      // Show health-zone tip labels by default (annotation key, like tipColourBy → init-set).
+      // Font size is applied post-theme (it's a theme key); a header button toggles on/off.
+      tipLabelShow: 'health_zone',
+      // Colour tips by health zone (categorical palette auto-built from the annotation).
+      // This is annotation-dependent, so it must be an init-setting (applySettings can't
+      // apply it). The built-in legend is left off by default (it reserves canvas width,
+      // shifting the tree + histogram); a header button toggles it on demand — see below.
+      tipColourBy: 'health_zone',
+      // Time axis calibrated to the tip `date` annotations (ISO strings), shown as
+      // calendar dates. Uses PearTree's smart auto axis (matches the embed demo):
+      // 'auto' tick intervals adapt density to the span/zoom, and 'component' labels
+      // show only the distinguishing part of each tick (month name, then day numbers).
+      // ('MMM yyyy' is NOT a valid axisDateFormat — it silently fell back to ISO and,
+      //  with a monthly interval, produced a single tick over the ~6-week span.)
+      axisShow: 'time',
+      axisDateAnnotation: 'date',
+      axisDateFormat: 'dd MMM yyyy',
+      axisMajorInterval: 'auto',
+      axisMinorInterval: 'auto',
+      axisMajorLabelFormat: 'component',
+      axisMinorLabelFormat: 'component',
+      // Show node uncertainty bars by default: the 95% HPD interval of internal-node ages
+      // (reads height_95%_HPD). The wider full-range whiskers (nodeBarsRange) are left off.
+      // Init-setting (applySettings doesn't push nodeBars to the renderer).
+      nodeBarsEnabled: 'on',
+      // Bar height in screen pixels (PearTree default is 6; slider range 2–30). Kept slim so the
+      // HPD bars read as fine whiskers rather than thick blocks over the branches.
+      nodeBarsWidth: '3',
+      // Distinct selection highlight — yellow to match the map's selected marker,
+      // with a thicker opaque border and a bigger grow so it stands out from the
+      // mauve tip / teal node colours. (These selection keys take as embed
+      // init-settings; applySettings does NOT support them.)
+      selectedTipFillColor: '#f2c84b',
+      selectedTipStrokeColor: '#9a7a16',
+      selectedTipStrokeWidth: '2',
+      selectedTipStrokeOpacity: '1',
+      selectedTipFillOpacity: '0.65',
+      selectedTipGrowthFactor: '1.9',
+      selectedTipMinSize: '6',
+      selectedNodeFillColor: '#f2c84b',
+      selectedNodeStrokeColor: '#9a7a16',
+      selectedNodeStrokeWidth: '2',
+      selectedNodeStrokeOpacity: '1',
+      selectedNodeFillOpacity: '0.65',
+      selectedNodeGrowthFactor: '1.9',
+      selectedNodeMinSize: '6',
+      // Muted-blue tip hover highlight (O'Toole's default is maroon, which clashes
+      // with the yellow selection). Like the selection keys, this must be an init-
+      // setting — applySettings does not push it to the renderer.
+      tipHoverFillColor: '#5b86b3',
+      tipHoverStrokeColor: '#33567a',
+      // Alignment-critical geometry (keep regardless of theme).
+      paddingLeft: String(TREE_PAD_LEFT),
+      paddingRight: String(TREE_PAD_RIGHT),
+      rootStubLength: '0',
+      rootStemPct: '0',
+    },
+  });
+
+  // Marker sizes + tip-label font: applyTheme("O'Toole") drives these, so set them after the
+  // theme. `nodeSize`/`tipSize` = node/tip markers; `fontSize` = the tip-label font (the
+  // applySettings key is `fontSize`, NOT the theme key `tipLabelFontSize`). applySettings
+  // supports them and runs last; re-applied on each tree load.
+  const SHAPE_SIZES = { nodeSize: '3', tipSize: '4', fontSize: '10' };
+  tree.applySettings(SHAPE_SIZES);
+
+  // Fit the whole tree once loaded (static-alignment baseline; PearTree observes
+  // its own container so it refits on resize).
+  tree.onTreeLoad(() => { tree.fitToWindow(); tree.applySettings(SHAPE_SIZES); });
+
+  // Disable PearTree's double-click "drill into subtree" gesture (there's no embed
+  // option for it): swallow dblclick on the tree canvas in the capture phase, before
+  // PearTree's own handler runs. Scoped to #tree-canvas so the data-table's
+  // double-click-to-edit is unaffected.
+  document.getElementById(containerId)?.addEventListener('dblclick', (e) => {
+    if (e.target && e.target.id === 'tree-canvas') { e.stopPropagation(); e.preventDefault(); }
+  }, true);
+
+  // Legend toggle. PearTree's embed API can't flip the built-in legend at runtime
+  // (applySettings doesn't cover legendAnnotation, and there's no panel toggle for it), so
+  // we drive its internal legend dropdown (#legend-annotation) directly and dispatch the
+  // change it listens for. Tips stay coloured by health_zone regardless; this only shows/
+  // hides the legend, which reserves canvas width (shifting the tree + histogram).
+  let legendOn = false;
+  const legendBtn = document.getElementById('legend-toggle');
+  function setLegend(on) {
+    const sel = document.getElementById('legend-annotation');
+    if (!sel) return;
+    sel.value = on ? 'health_zone' : '';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    legendOn = on;
+    legendBtn?.classList.toggle('active', on);
+  }
+  legendBtn?.addEventListener('click', () => setLegend(!legendOn));
+
+  // Node-bars toggle. Same situation as the legend: applySettings can't push nodeBars to the
+  // renderer at runtime, so we drive PearTree's internal "Show" select (#node-bars-show, off/on)
+  // and dispatch the change it listens for (→ applyNodeBars re-render). Starts on to match the
+  // nodeBarsEnabled:'on' init-setting, so the button begins active.
+  let nodeBarsOn = true;
+  const nodeBarsBtn = document.getElementById('nodebars-toggle');
+  function setNodeBars(on) {
+    const sel = document.getElementById('node-bars-show');
+    if (!sel) return;
+    sel.value = on ? 'on' : 'off';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    nodeBarsOn = on;
+    nodeBarsBtn?.classList.toggle('active', on);
+  }
+  nodeBarsBtn?.classList.toggle('active', nodeBarsOn);   // reflect the default-on state
+  nodeBarsBtn?.addEventListener('click', () => setNodeBars(!nodeBarsOn));
+
+  // Tip-labels toggle. Drives PearTree's internal #tip-label-show select between the
+  // health_zone annotation and 'off' (dispatching the change it re-renders on). Starts on to
+  // match the tipLabelShow:'health_zone' init-setting; font size is set via SHAPE_SIZES above.
+  let tipLabelsOn = true;
+  const tipLabelsBtn = document.getElementById('tiplabels-toggle');
+  function setTipLabels(on) {
+    const sel = document.getElementById('tip-label-show');
+    if (!sel) return;
+    sel.value = on ? 'health_zone' : 'off';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    tipLabelsOn = on;
+    tipLabelsBtn?.classList.toggle('active', on);
+  }
+  tipLabelsBtn?.classList.toggle('active', tipLabelsOn);   // reflect the default-on state
+  tipLabelsBtn?.addEventListener('click', () => setTipLabels(!tipLabelsOn));
+
+  // Shaded time-window band overlaid on the canvas. Positioned with the SAME date→x mapping
+  // the histogram uses (root → offsetX, mostRecent → offsetX + maxX·scaleX), so it lines up
+  // with the histogram's brush band — extrapolating past the tree's latest tip when the window
+  // runs into the "beyond" region (the freed strip created by compressing the tree). Attached
+  // to #canvas-container (not #canvas-wrapper) so the band can extend into that strip instead
+  // of being clipped at the shrunken wrapper's edge; both share the same left x-origin as the
+  // transform. Repositioned on every view change; pointer-events:none keeps the tree clickable.
+  const t0 = meta ? +new Date(meta.rootDate) : 0;
+  const t1 = meta ? +new Date(meta.mostRecentDate) : 0;
+  let band = null, bandWin = null;     // { d0, d1 } in ms, or null
+  function ensureBand() {
+    if (band) return band;
+    const host = document.getElementById('canvas-container');
+    if (!host) return null;
+    band = document.createElement('div'); band.className = 'tree-time-band';
+    host.appendChild(band);
+    return band;
+  }
+  function positionBand() {
+    const el = ensureBand();
+    if (!el) return;
+    const vt = tree.getViewTransform?.();
+    // Both edges extrapolate: past t1 into the beyond strip, and before t0 toward the container's
+    // left edge — so a window selected before the root (Ne panel brush) is drawn to its true extent.
+    const px = (bandWin && vt && vt.maxX)
+      ? bandPixels(bandWin.d0, bandWin.d1, t0, t1, vt.offsetX, vt.maxX * vt.scaleX)
+      : null;
+    if (!px) { el.style.display = 'none'; return; }
+    // Show: must set a concrete display value — the base `.tree-time-band` rule is
+    // `display:none`, so '' would fall back to that and the band would stay hidden.
+    el.style.display = 'block'; el.style.left = `${px[0]}px`; el.style.width = `${px[1] - px[0]}px`;
+  }
+  tree.onViewChange(() => positionBand());   // track pan / zoom / resize
+
+  return {
+    /**
+     * Select tips by their accession (== leaf name). PearTree's setSelection
+     * keys on internal node ids (not names), so we select via the `accession`
+     * annotation instead — additively, one per tip.
+     */
+    selectByNames(names) {
+      (names || []).forEach((nm, i) => tree.selectByAnnotation('accession', nm, { additive: i > 0 }));
+    },
+    /** Clear the selection. */
+    clear() { tree.setSelection([]); },
+    /** Subscribe to selection changes: cb({ target, selected, mrca }). */
+    onSelect(cb) { return tree.onNodeSelect(cb); },
+    /** Subscribe to view-transform changes: cb({ offsetX, scaleX, maxX }). */
+    onViewChange(cb) { return tree.onViewChange(cb); },
+    /** Snapshot the current view transform, or null. */
+    getViewTransform() { return tree.getViewTransform(); },
+    /** Show/move the time-window band (inclusive ms bounds), or null to hide it. */
+    setTimeBand(d0, d1) {
+      bandWin = (d0 != null && d1 != null) ? { d0: +d0, d1: +d1 } : null;
+      positionBand();
+    },
+    /**
+     * Compress the tree CANVAS to fraction f∈[WIDTH_FLOOR,1] of its width by insetting
+     * PearTree's #canvas-container (a sibling of the toolbar, so the toolbar is untouched).
+     * Uses padding-right (not margin) so the freed strip stays INSIDE #canvas-container and
+     * shows its theme canvas background — not the embed-wrap (toolbar) surface behind it.
+     * PearTree's own ResizeObserver refits the tree and re-emits the view transform, which
+     * the time-series panel locks onto. f≈1 restores full width.
+     */
+    setWidthFraction(f) {
+      const cc = document.getElementById('canvas-container');
+      if (!cc) return;                                          // tree not embedded yet → no-op
+      const frac = Math.max(WIDTH_FLOOR, Math.min(1, f || 1));
+      cc.style.paddingRight = frac >= 1 ? '' : `${((1 - frac) * 100).toFixed(3)}%`;
+    },
+  };
+}

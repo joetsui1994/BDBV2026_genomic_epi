@@ -1,0 +1,38 @@
+observed_name,canonical_nom,source_dataset,notes
+Mongbalu,Mongbwalu,flowminder,Shapefile/FlowMinder typo; canonical corrected to Mongbwalu (matches line-list)
+Nyankunde,Nyakunde,flowminder,Spelling variant noted in flowminder/README.md
+Boma Mangbetu,Boma-Mangbetu,flowminder,Space-separated variant of canonical hyphenated form
+Gety,Gethy,flowminder,Common alternate spelling of canonical Gethy
+Makiso Kisangani,Makiso-Kisangani,flowminder,Space-separated variant of canonical hyphenated form
+Nia Nia,Nia-Nia,flowminder,Space-separated variant of canonical hyphenated form
+Rwmapara,Rwampara,epi,Transposition typo observed in WHO Sitrep 01 (2026-05-18)
+Manguripa,Manguredjipa,insp_sitrep,Truncated spelling in INSP SitRep contact/case tables
+DRODO,Drodro,linelist,Spelling variant in BD_LABO line-list
+MUNGBAWALU,Mongbwalu,linelist,Spelling variant of Mongbwalu in BD_LABO line-list
+NBAMBU,Bambu,linelist,Spelling variant of Bambu in BD_LABO line-list
+BUNA,Bunia,linelist,Mapped to Bunia (per data owner)
+MABANGA,Mambasa,linelist,Mapped to Mambasa (per data owner)
+KAOBALA,Kambala,linelist,Mapped to Kambala (per data owner)
+ITENDEY,Kilo,linelist,Mapped to Kilo (per data owner)
+Banzow Moke,Banjow Moke,health_zone_metadata,Spelling variant in DHIS2 risk metadata
+Bogosenubea,Bogosenubia,health_zone_metadata,Spelling variant in DHIS2 risk metadata
+Busanga,Bosanga,health_zone_metadata,Spelling variant in DHIS2 risk metadata
+Gungu (Secteur),Gungu,health_zone_metadata,Secteur-suffixed variant in DHIS2 risk metadata
+Idiofa (Secteur),Idiofa,health_zone_metadata,Secteur-suffixed variant in DHIS2 risk metadata
+Kabeya Kamwanga,Kabeya Kamuanga,health_zone_metadata,Spelling variant in DHIS2 risk metadata
+Kabondo-Dianda,Kabondo Dianda,health_zone_metadata,Hyphenated variant in DHIS2 risk metadata
+Kasongo-Lunda,Kasongo Lunda,health_zone_metadata,Hyphenated variant in DHIS2 risk metadata
+Kimbao,Kimbau,health_zone_metadata,Spelling variant in DHIS2 risk metadata
+Kiambi,Kiyambi,health_zone_metadata,Spelling variant in DHIS2 risk metadata
+Malemba Nkulu,Malemba,health_zone_metadata,Longer-form variant in DHIS2 risk metadata
+Nsona-Pangu,Nsona-Mpangu,health_zone_metadata,Spelling variant in DHIS2 risk metadata
+Nyirangongo,Nyiragongo,health_zone_metadata,Spelling variant in DHIS2 risk metadata
+Pendjua,Penjwa,health_zone_metadata,Spelling variant in DHIS2 risk metadata
+Citenge,Tshitenge,health_zone_metadata,Spelling variant in DHIS2 risk metadata
+Yalifafu,Yalifafo,health_zone_metadata,Spelling variant in DHIS2 risk metadata
+Mongwalu,Mongbwalu,egc_tree,Spelling variant of Mongbwalu in the n35 EGC tree
+Nyankunnde,Nyakunde,egc_tree,Double-n typo of Nyakunde in the n35 EGC tree
+Mungwalu,Mongbwalu,egc_tree,Spelling variant of Mongbwalu in the n139 tree
+Sota,Nyakunde,egc_tree,Locality in the Nyakunde health zone (per data owner)
+Kalamu 2,Kalamu II,dhis,Arabic-numeral variant of canonical Kinshasa sub-zone (geojson uses roman numerals)
+Mont Ngafula 1,Mont Ngafula I,dhis,Arabic-numeral variant of canonical Kinshasa sub-zone (geojson uses roman numerals)

@@ -1,0 +1,491 @@
+:root {
+  --bg: #f6f5f2;          /* warm off-white page */
+  --card: #ffffff;
+  --border: #e7e3db;
+  --ink: #2a2a27;
+  --muted: #9c968b;       /* uppercase section labels, subtitles */
+  --maroon: #7c1d1d;      /* deaths / primary accent */
+  --red: #b23b2e;         /* selection / emphasis */
+  --terracotta: #9b7d4e;  /* secondary accent (hover, grips) */
+  --salmon: #f1ccc6;      /* area fill */
+  --grip: #d8d3c9;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  display: flex;
+  flex-direction: column;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Header ───────────────────────────────────────────────── */
+#app-header {
+  display: flex; align-items: center; gap: 11px;
+  padding: 11px 16px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+/* Live indicator: solid red dot with an expanding, fading "ping" ring */
+#app-header .dot {
+  position: relative; flex: none;
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--red);
+}
+#app-header .dot::after {
+  content: ''; position: absolute; inset: 0;
+  border-radius: 50%; background: var(--red);
+  animation: live-ping 1.8s ease-out infinite;
+}
+@keyframes live-ping {
+  0%   { transform: scale(1);   opacity: 0.55; }
+  70%  { opacity: 0; }
+  100% { transform: scale(3.4); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #app-header .dot::after { animation: none; }
+}
+
+#app-header h1 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+#app-header .sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+/* Line-list version picker — pushed to the right edge of the header, dropped to the
+   bottom so it lines up with the "Last updated on:" subtitle on the left. */
+.linelist-picker { margin-left: auto; align-self: flex-end; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--muted); white-space: nowrap; }
+.linelist-picker select {
+  font: inherit; font-size: 12px; color: var(--ink); background: var(--card);
+  border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; cursor: pointer;
+}
+
+/* ── Split layout ─────────────────────────────────────────── */
+#app  { flex: 1 1 0; min-height: 0; display: flex; flex-direction: row; padding: 10px; }
+#left { display: flex; flex-direction: column; flex: 1 1 0; min-width: 475px; }
+#map  { flex: 1 1 0; min-width: 473px; }
+#tree       { flex: 3 1 0; min-height: 140px; }
+/* Mask the brief beyond-recalibration flicker: hide instantly, fade back in when it settles.
+   Targets only PearTree's tree drawing (#canvas-container), not its toolbar/status/palette. */
+#canvas-container { transition: opacity 0.18s ease; }
+#canvas-container.settling-hide { opacity: 0; transition: none; }
+#timeseries { flex: 2 1 0; min-height: 110px; display: flex; flex-direction: column; }
+/* Body follows the (now wrap-capable) header instead of a fixed top offset; relative so it
+   stays the positioning context for the absolutely-laid-out chart/controls/tooltip. */
+#timeseries > .panel-body { position: relative; inset: auto; flex: 1 1 0; min-height: 0; }
+
+/* Effective population size panel — follows the flex-body pattern (no hardcoded header offset). */
+#ne { flex: 2 1 0; min-height: 90px; display: flex; flex-direction: column; }
+#ne > .panel-body { position: relative; inset: auto; flex: 1 1 0; min-height: 0; }
+.ne-svg { position: absolute; inset: 0; }
+.ne-svg svg { display: block; }
+.ne-tip {
+  position: absolute; z-index: 5; pointer-events: none;
+  background: rgba(255, 255, 255, 0.97); border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 7px; font-size: 10.5px; color: var(--ink); white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(30, 25, 18, 0.14);
+}
+.ne-tip-d { font-weight: 700; color: var(--ink); margin-bottom: 2px; }
+.ne-tip-k { font-weight: 700; }
+.ne-tip-ci { color: var(--muted); }
+/* Per-dataset visibility toggles in the Ne header. Neutral pill when off; the active colour
+   (border/text/fill) is set inline to the dataset's own colour. */
+.ne-ds-toggle {
+  float: right; margin-top: -1px; margin-left: 6px;
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0.03em; text-transform: none;
+  color: var(--muted); background: rgba(0, 0, 0, 0.02);
+  border: 1px solid var(--border); border-radius: 5px; padding: 1px 7px; cursor: pointer;
+}
+
+/* ── Cards ────────────────────────────────────────────────── */
+.panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 1px 2px rgba(30, 25, 18, 0.05);
+}
+.panel > h3 {
+  margin: 0; padding: 9px 12px 8px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--muted); background: transparent;
+  border-bottom: 1px solid var(--border);
+}
+/* Header minimise/expand chevron (left-column panels). Inline in the plain Phylogeny
+   header; a flex item (vertically centred) in the flex Sample-distribution header. */
+.panel-collapse {
+  /* inline-flex so the glyph is centred within the button (neutralises the triangle
+     glyph's off-centre metrics); vertical-align/align-self centre the button in the
+     plain Phylogeny header and the flex Sample-distribution header respectively. The
+     titles are uppercase (taller than x-height), so `vertical-align: middle` lands the
+     glyph ~1px low — nudge it up to sit on the text's optical centre. */
+  display: inline-flex; align-items: center; justify-content: center;
+  vertical-align: middle; align-self: center;
+  position: relative; top: -1px;
+  width: 15px; height: 13px;   /* height ≤ the header text line so the 31px header keeps its height */
+  border: none; background: transparent; color: var(--muted);
+  font-size: 13px; line-height: 1; cursor: pointer;
+  padding: 0; margin: 0; flex: none;
+}
+/* Icon→title gap. The distribution header's flex `gap:8px` already spaces its icon from
+   the title; give the plain Phylogeny header's icon the same 8px so both line up. */
+#tree-collapse, #ne-collapse { margin-right: 8px; }
+/* The Ne "full extent" reveal is an arrow icon — match the distribution header's → button
+   (#dist-beyond): same 9.5px / bold glyph, minus the .tree-toggle uppercase letter-spacing. */
+#ne-fullextent { font-size: 9.5px; font-weight: 700; line-height: 1; padding: 1px 7px; letter-spacing: 0; }
+.panel-collapse:hover { color: var(--ink); }
+/* Disabled: this is the only expanded panel, so it can't be collapsed (≥1 must stay open). */
+.panel-collapse:disabled { opacity: 0.3; cursor: default; }
+.panel-collapse:disabled:hover { color: var(--muted); }
+/* Collapsed: hide the body so the panel shrinks to just its header bar. */
+.panel.collapsed > .panel-body { display: none; }
+/* Collapsed distribution: hide the scope/note text (a node selection can fill it over several
+   lines, which would grow the header and shove the other panels); keep title + right-end tools. */
+#timeseries.collapsed .dist-head-sub { display: none; }
+/* When a panel is minimised, its header feature buttons (Legend / Node bars / Tip labels / the Ne
+   reveal + dataset toggles / CSV …) go non-interactive — only the collapse chevron stays live.
+   Otherwise a click could relayout the hidden tree and shift every panel's shared time axis. */
+.panel.collapsed > h3 button:not(.panel-collapse) { pointer-events: none; opacity: 0.4; }
+.dist-scope { font-weight: 600; letter-spacing: 0.04em; color: var(--maroon); text-transform: none; }
+.dist-download {
+  float: right; margin-top: -1px;
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0.03em; text-transform: none;
+  color: var(--maroon); background: rgba(124, 29, 29, 0.08);
+  border: 1px solid rgba(124, 29, 29, 0.25); border-radius: 5px;
+  padding: 1px 7px; cursor: pointer;
+}
+.dist-download:hover { background: rgba(124, 29, 29, 0.16); }
+.dist-download.active { background: var(--maroon); color: #fff; }
+/* "Look beyond" toggle: same muted active/faint-inactive treatment as .tree-toggle
+   (scoped to #dist-beyond so the sibling CSV button keeps its own styling). */
+#dist-beyond {
+  margin-left: 10px; font-weight: 700;   /* match the Ct↔CSV gap; arrow glyph */
+  color: rgba(124, 29, 29, 0.65); background: rgba(124, 29, 29, 0.035);
+  border-color: rgba(124, 29, 29, 0.15);
+}
+#dist-beyond:hover { background: rgba(124, 29, 29, 0.1); color: var(--maroon); }
+#dist-beyond.active { background: rgba(124, 29, 29, 0.18); border-color: var(--maroon); color: var(--maroon); }
+#dist-beyond.active:hover { background: rgba(124, 29, 29, 0.24); }
+.tree-toggle {
+  float: right; margin-top: -1px; margin-left: 6px;
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
+  color: rgba(124, 29, 29, 0.65); background: rgba(124, 29, 29, 0.035);
+  border: 1px solid rgba(124, 29, 29, 0.15); border-radius: 5px;
+  padding: 1px 8px; cursor: pointer;
+}
+.tree-toggle:hover { background: rgba(124, 29, 29, 0.1); color: var(--maroon); }
+/* Active: a muted maroon tint with a solid maroon border (border is the "on" cue),
+   rather than a heavy solid fill — keeps the toggle in the page's restrained palette. */
+.tree-toggle.active { background: rgba(124, 29, 29, 0.18); border-color: var(--maroon); color: var(--maroon); }
+.tree-toggle.active:hover { background: rgba(124, 29, 29, 0.24); }
+.panel-body { position: absolute; top: 31px; left: 0; right: 0; bottom: 0; }
+
+/* Sample-distribution: zone/area toggle + status legend, a row offset from the
+   left edge so it clears the y-axis tick labels */
+.dist-svg { position: absolute; inset: 0; }
+.dist-controls {
+  position: absolute; top: 8px; left: 42px; z-index: 1;
+  display: flex; align-items: flex-start; gap: 10px;
+}
+.dist-controls-left { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.dist-toggle {
+  display: flex; border: 1px solid var(--border); border-radius: 5px; overflow: hidden;
+  background: rgba(255, 255, 255, 0.85);
+}
+.dist-toggle button {
+  font-size: 10px; padding: 2px 8px; border: none; background: transparent;
+  color: var(--muted); cursor: pointer;
+}
+.dist-toggle button.active { background: var(--terracotta); color: #fff; }
+.dist-toggle button:disabled { color: #ccd; cursor: default; }
+.dist-legend {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  font-size: 10px; color: var(--ink);
+  background: rgba(255, 255, 255, 0.82); padding: 2px 6px; border-radius: 5px;
+}
+.dist-legend span { display: flex; align-items: center; gap: 4px; }
+.dist-legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; flex: none; }
+.seq-dot { border-radius: 50% !important; opacity: 0.45; }   /* sequence swatch = circle, matching the track circles' opacity */
+
+/* "N not shown (…)" — header note for undated / out-of-window samples the chart can't plot */
+.dist-note {
+  margin-left: 7px; font-size: 9px; font-weight: 500; letter-spacing: 0.02em;
+  text-transform: none; color: var(--muted);
+}
+/* Header: title+scope wrap to as many lines as needed; the Ct/CSV/→ tools stay pinned
+   top-right (align-items:flex-start) so a long zone list never pushes them down. */
+#timeseries > h3 { display: flex; align-items: flex-start; gap: 8px; white-space: normal; }
+/* Title is a fixed column; the scope/note wrap in their own column beside it, so wrapped
+   lines hang-indent to where the zone list begins rather than under the title. */
+.dist-head-main { flex: 1 1 auto; min-width: 0; display: flex; align-items: flex-start; gap: 5px; }
+.dist-head-title { flex: none; }
+.dist-head-sub { flex: 1 1 auto; min-width: 0; }
+.dist-tools { flex: none; display: flex; align-items: center; gap: 8px; }
+.dist-tools .dist-ct { margin: 0; }
+.dist-tools #dist-beyond { margin-left: 0; }
+
+/* Ct filter (positives): label + small number input, in the header (gap to the CSV button) */
+.dist-ct {
+  float: right; display: inline-flex; align-items: center; gap: 4px;
+  margin: -1px 10px 0 8px; text-transform: none; font-weight: 500;
+}
+.dist-ct label { font-size: 9px; color: var(--muted); }
+.dist-ct input {
+  width: 40px; font-size: 10px; padding: 1px 4px;
+  border: 1px solid var(--border); border-radius: 4px; color: var(--ink);
+}
+.dist-ct input:focus { outline: none; border-color: var(--terracotta); }
+/* Map-header Ct filter: same input as the distribution panel, but a flex item pushed
+   to the right of the tab strip (not floated). Shown only on Map tab + Positive metric. */
+.map-ct { float: none; margin: 0 2px 0 auto; align-self: center; }
+
+/* CSV export confirmation dialog (sample-distribution download) */
+.export-modal-overlay {
+  position: fixed; inset: 0; z-index: 3000;
+  background: rgba(30, 25, 18, 0.38);
+  display: flex; align-items: center; justify-content: center;
+}
+.export-modal {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(30, 25, 18, 0.25); padding: 16px 18px;
+  width: 380px; max-width: 92vw; font-size: 12px; color: var(--ink);
+}
+.export-modal h4 {
+  margin: 0 0 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ink);
+}
+.export-summary { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0 0 14px; }
+.export-summary dt { color: var(--muted); font-size: 10.5px; }
+.export-summary dd { margin: 0; font-weight: 500; }
+.export-filename { display: flex; flex-direction: column; gap: 5px; font-size: 10.5px; color: var(--muted); margin-bottom: 16px; }
+.export-filename input {
+  font-size: 12px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px;
+  color: var(--ink); font-family: inherit;
+}
+.export-filename input:focus { outline: none; border-color: var(--terracotta); }
+.export-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.export-actions button {
+  font-size: 11px; font-weight: 600; padding: 6px 13px; border-radius: 5px;
+  cursor: pointer; border: 1px solid var(--border);
+}
+.export-cancel { background: transparent; color: var(--ink); }
+.export-cancel:hover { background: rgba(30, 25, 18, 0.05); }
+.export-go { background: var(--maroon); color: #fff; border-color: var(--maroon); }
+.export-go:hover { background: #6a1717; }
+.export-go:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Sample-distribution hover tooltip */
+.dist-tip {
+  position: absolute; z-index: 4; pointer-events: none;
+  background: rgba(255, 255, 255, 0.97); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 2px 7px rgba(30, 25, 18, 0.14); padding: 5px 8px;
+  font-size: 11px; color: var(--ink); white-space: nowrap;
+}
+.dist-tip .tip-date { font-weight: 600; margin-bottom: 3px; }
+.dist-tip .tip-row { display: flex; align-items: center; gap: 6px; line-height: 1.55; }
+.dist-tip .tip-row i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; flex: none; }
+.dist-tip .tip-row b { margin-left: auto; padding-left: 12px; font-variant-numeric: tabular-nums; }
+
+/* Summary card for the brushed time window (bottom-left of the histogram) */
+.dist-window-summary {
+  position: absolute; left: 42px; top: 36px; z-index: 4; pointer-events: none;
+  background: rgba(255, 255, 255, 0.92); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 2px 7px rgba(30, 25, 18, 0.12); padding: 5px 8px;
+  font-size: 11px; line-height: 1.5; color: var(--ink); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.dist-window-summary .ws-range { font-weight: 600; margin-bottom: 2px; }
+.dist-window-summary .ws-dim { color: var(--muted); }
+/* Only the count is bold (the label stays normal weight), matching the heatmap tooltip. */
+.dist-window-summary .ws-seq { color: #7c1d1d; }
+.dist-window-summary .ws-alloc { color: #205c4c; }
+
+/* Floating node-info card (pinned top-left of the tree, below the toolbar — `top` set in JS) */
+.node-info {
+  position: absolute; left: 10px; top: 50px; z-index: 5;
+  max-width: 240px;
+  background: rgba(255, 255, 255, 0.96); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(30, 25, 18, 0.14);
+  padding: 8px 10px; font-size: 11px; color: var(--ink);
+}
+.node-info .ni-head {
+  font-size: 8.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted);
+}
+.node-info .ni-title { font-weight: 700; font-size: 12px; margin: 1px 0 5px; color: var(--maroon); word-break: break-word; }
+.node-info .ni-row { display: flex; gap: 8px; line-height: 1.5; }
+.node-info .ni-k { color: var(--muted); flex: none; min-width: 76px; }
+.node-info .ni-v { color: var(--ink); }
+
+/* ── Draggable dividers ───────────────────────────────────── */
+.gutter { flex: 0 0 10px; display: flex; align-items: center; justify-content: center; touch-action: none; }
+.gutter-v { cursor: col-resize; }
+.gutter-h { cursor: row-resize; }
+.grip { background: var(--grip); border-radius: 3px; transition: background .12s ease; }
+.grip-v { width: 4px; height: 40px; }
+.grip-h { width: 40px; height: 4px; }
+.gutter:hover .grip,
+.gutter.dragging .grip { background: var(--terracotta); }
+/* Locked while an adjacent panel is minimised: not draggable, no resize cursor, faded grip. */
+.gutter.disabled { pointer-events: none; cursor: default; }
+.gutter.disabled .grip { opacity: 0.25; }
+
+/* ── Map legend + Leaflet chrome ──────────────────────────── */
+.map-legend {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border); border-radius: 7px;
+  padding: 6px 9px; font-size: 11px; color: var(--ink);
+  box-shadow: 0 1px 2px rgba(30, 25, 18, 0.08);
+}
+.map-legend .lg-title { font-size: 9.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+.map-legend span { display: flex; align-items: center; gap: 7px; line-height: 1.6; }
+.map-legend i { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid; display: inline-block; flex: none; }
+/* Mobility legend: line swatches (not dots) + a muted note line */
+.mob-legend i { width: 16px; height: 3px; border-radius: 1px; border: none; }
+.mob-legend .lg-note { display: block; margin-top: 2px; font-size: 9.5px; color: var(--muted); }
+
+/* Health-zone search-and-zoom box — sits to the right of the zoom +/- buttons,
+   aligned to the same top margin (override Leaflet's vertical control stacking). */
+.zone-search { position: relative; }
+.leaflet-top.leaflet-left .zone-search {
+  position: absolute; top: 10px; left: 50px;   /* aligns with the zoom group's top */
+  margin: 0; float: none; clear: none;
+}
+.zone-search-input {
+  width: 196px; font-size: 12px; padding: 5px 9px;
+  border: 1px solid var(--border); border-radius: 3px;
+  background: rgba(255, 255, 255, 0.96); color: var(--ink);
+  box-shadow: 0 1px 2px rgba(30, 25, 18, 0.1); outline: none;
+}
+.zone-search-input:focus { border-color: var(--terracotta); }
+.zone-search-list {
+  list-style: none; margin: 3px 0 0; padding: 3px;
+  position: absolute; left: 0; top: 100%; width: 196px;
+  background: #fff; border: 1px solid var(--border); border-radius: 4px;
+  box-shadow: 0 2px 7px rgba(30, 25, 18, 0.14);
+  display: none; z-index: 1000; max-height: 220px; overflow-y: auto;
+}
+.zone-search-list li {
+  padding: 4px 8px; font-size: 12px; color: var(--ink);
+  border-radius: 3px; cursor: pointer;
+}
+.zone-search-list li.active,
+.zone-search-list li:hover { background: rgba(155, 125, 78, 0.16); }
+
+.risk-toggle {
+  background: rgba(255, 255, 255, 0.94); border: 1px solid var(--border); border-radius: 7px;
+  padding: 4px 9px; font-size: 11px; font-weight: 600; color: var(--maroon); cursor: pointer;
+  box-shadow: 0 1px 2px rgba(30, 25, 18, 0.1);
+}
+.risk-toggle.off { color: var(--muted); }
+
+/* Choropleth metric button group (segmented control, top-right of the map) */
+.choropleth-groups { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.choropleth-group {
+  display: flex; flex-wrap: wrap;
+  background: rgba(255, 255, 255, 0.94); border: 1px solid var(--border);
+  border-radius: 7px; overflow: hidden; box-shadow: 0 1px 2px rgba(30, 25, 18, 0.1);
+}
+.choropleth-group button {
+  font-size: 10.5px; font-weight: 600; padding: 3px 8px;
+  border: none; border-left: 1px solid var(--border);
+  background: transparent; color: var(--muted); cursor: pointer;
+}
+.choropleth-group button:first-child { border-left: none; }
+.choropleth-group button.active { background: var(--terracotta); color: #fff; }
+.choropleth-group button:hover:not(.active) { background: rgba(155, 125, 78, 0.12); }
+
+/* Top-right map controls share one row: the choropleth metric group on the right,
+   the mobility toggle to its left (row-reverse keeps the metric group at the edge;
+   Leaflet's per-control margin provides the gap). */
+.leaflet-top.leaflet-right { display: flex; flex-direction: row-reverse; align-items: flex-start; }
+
+/* Zoom +/- group — match the dashboard's other map controls: light 1px border,
+   7px radius, subtle shadow, 26px buttons, aligned to the same 10px top margin. */
+.leaflet-control-zoom { margin: 10px 0 0 10px !important; }
+.leaflet-bar {
+  border: 1px solid var(--border) !important;
+  border-radius: 7px !important;
+  box-shadow: 0 1px 2px rgba(30, 25, 18, 0.1) !important;
+}
+.leaflet-bar a {
+  width: 26px; height: 26px; line-height: 26px;
+  color: var(--maroon); background: rgba(255, 255, 255, 0.94);   /* maroon glyph, like the other controls */
+  border-bottom: 1px solid var(--border);
+}
+.leaflet-bar a:first-child { border-top-left-radius: 6px; border-top-right-radius: 6px; }
+.leaflet-bar a:last-child  { border-bottom: none; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; }
+.leaflet-bar a:hover { background: rgba(155, 125, 78, 0.12); color: var(--maroon); }
+.leaflet-control-attribution {
+  font-size: 9px !important; color: var(--muted) !important;
+  background: rgba(255, 255, 255, 0.7) !important;
+}
+/* No focus outline ("blue square") around clicked vector markers */
+.leaflet-container .leaflet-interactive:focus,
+.leaflet-container svg:focus,
+.leaflet-container path:focus { outline: none; }
+
+/* ── Retint the embedded PearTree interface (toolbar/buttons/panels) ──
+   Overrides PearTree's --pt-* theme vars to the dashboard palette. Scoped to
+   the tree container (id specificity wins over the bundle's [data-bs-theme]).
+   The tree canvas/background is unaffected (set via embed settings). */
+#tree-body,
+#tree-body [data-bs-theme],
+#tree-body[data-bs-theme] {
+  --pt-bg:            #ffffff;             /* canvas container */
+  --pt-bg-panel:      #f3f1ec;             /* toolbar / panels / popovers */
+  --pt-bg-dark:       #ece9e2;
+  --pt-bg-deepest:    #ece9e2;
+  --pt-border:        rgba(60, 48, 36, 0.12);
+  --pt-border-strong: rgba(60, 48, 36, 0.26);
+  --pt-border-input:  rgba(60, 48, 36, 0.18);
+  --pt-divider:         rgba(60, 48, 36, 0.10);
+  --pt-divider-section: rgba(60, 48, 36, 0.08);
+  --pt-divider-panel:   rgba(60, 48, 36, 0.10);
+  --pt-gold:          #9b7d4e;             /* primary accent → terracotta */
+  --pt-primary:       #9b7d4e;
+  --pt-brand-hover:   #7c1d1d;             /* → maroon */
+  --pt-red:           #b23b2e;
+  --pt-selection-bg:    rgba(155, 125, 78, 0.16);
+  --pt-selection-focus: rgba(155, 125, 78, 0.12);
+  --pt-resize-hover:    rgba(155, 125, 78, 0.30);
+  --pt-btn-default-bg:     rgba(155, 125, 78, 0.14);
+  --pt-btn-default-border: rgba(155, 125, 78, 0.50);
+  --pt-btn-default-text:   #8a6d3f;
+}
+
+/* Hide the "Fit view" pair (Fit all / Fit labels) from the zoom toolbar group, and
+   trim the tip-filter to drop the save / apply-saved-filter buttons — keeping the
+   search field + match-condition dropdowns. */
+#tree-body .btn-group:has(#btn-fit),
+#tree-body .fc-add,
+#tree-body .pt-named-filter-wrap { display: none !important; }
+
+/* Export dialogs (e.g. the graphic/"photograph" export): the modal background is
+   our light --pt-bg-panel, but the text used Bootstrap's --bs-body-color (light,
+   from the dark bs-theme) → near-invisible. Force readable dark text. */
+#tree-body .pt-modal {
+  color: var(--ink);
+  --bs-body-color: #2a2a27;
+  --bs-secondary-color: rgba(42, 42, 39, 0.62);
+}
+
+/* The PearTree export modal is z-index:800, below Leaflet's map control containers
+   (.leaflet-top/.leaflet-bottom are z-index:1000), so the map's +/- buttons and
+   search box poke through the dialog. Lift the overlay above them. */
+#tree-body .pt-modal-overlay { z-index: 2000; }
+
+/* Map panel header title, left-aligned in the panel's title bar (single Outbreak
+   map view; the prioritisation tab was removed). */
+.panel > h3.map-head { padding: 0 6px; display: flex; align-items: stretch; gap: 2px; }
+.map-title {
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--muted); padding: 9px 10px 7px;
+}
+
+/* Time-window band overlaid on the tree canvas (positioned by the view transform). */
+.tree-time-band {
+  position: absolute; top: 0; bottom: 0; z-index: 2; pointer-events: none;
+  background: rgba(124, 29, 29, 0.10); border-left: 1px solid rgba(124, 29, 29, 0.45);
+  border-right: 1px solid rgba(124, 29, 29, 0.45); display: none;
+}

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ituri Ebola — Genomic Dashboard</title>
+  <!-- PearTree bundle: exposes window.PearTreeEmbed (loads before the module) -->
+  <script src="%BASE_URL%peartree.bundle.min.js"></script>
+</head>
+<body>
+  <header id="app-header">
+    <span class="dot" title="Live — regularly updated" aria-hidden="true"></span>
+    <div class="titles">
+      <h1>Genomic Epidemiology of 2026 Ebola Outbreak in the DRC</h1>
+      <div class="sub">Last updated on: <span id="last-updated">—</span></div>
+    </div>
+    <label class="linelist-picker" title="Switch the line-list version (reloads the page)">Line list:
+      <select id="linelist-select"></select>
+    </label>
+  </header>
+  <div id="app">
+    <div id="left">
+      <div id="tree" class="panel"><h3><button id="tree-collapse" class="panel-collapse" type="button" title="Minimise panel" aria-expanded="true">▾</button>Phylogeny <button id="legend-toggle" class="tree-toggle" type="button" title="Show/hide the health-zone colour legend">Legend</button><button id="nodebars-toggle" class="tree-toggle" type="button" title="Show/hide node confidence (95% HPD) bars">Node bars</button><button id="tiplabels-toggle" class="tree-toggle" type="button" title="Show/hide health-zone tip labels">Tip labels</button></h3><div id="tree-body" class="panel-body"></div></div>
+      <div id="gutter-h" class="gutter gutter-h" title="Drag to resize"><span class="grip grip-h"></span></div>
+      <div id="ne" class="panel"><h3><button id="ne-collapse" class="panel-collapse" type="button" title="Minimise panel" aria-expanded="true">▼</button>Effective population size<button id="ne-fullextent" class="tree-toggle" type="button" title="Hover to show the full time extent (back before the tree root)">←</button><button id="ne-toggle-exp" class="ne-ds-toggle" type="button" title="Toggle the exponential-growth estimate">Exp</button><button id="ne-toggle-skygrid" class="ne-ds-toggle" type="button" title="Toggle the SkyGrid estimate">SkyGrid</button></h3><div id="ne-body" class="panel-body"></div></div>
+      <div id="gutter-h2" class="gutter gutter-h" title="Drag to resize"><span class="grip grip-h"></span></div>
+      <div id="timeseries" class="panel"><h3><button id="dist-collapse" class="panel-collapse" type="button" title="Minimise panel" aria-expanded="true">▾</button><span class="dist-head-main"><span class="dist-head-title">Sample distribution</span><span class="dist-head-sub"><span id="dist-scope" class="dist-scope"></span><span id="dist-note" class="dist-note"></span></span></span><span id="dist-tools" class="dist-tools"><button id="dist-download" class="dist-download" type="button" title="Download daily counts (CSV)">⤓ CSV</button><button id="dist-beyond" class="dist-download" type="button" title="Show samples dated after the tree's latest tip">→</button></span></h3><div id="timeseries-body" class="panel-body"></div></div>
+    </div>
+    <div id="gutter-v" class="gutter gutter-v" title="Drag to resize"><span class="grip grip-v"></span></div>
+    <div id="map" class="panel">
+      <h3 class="map-head"><span class="map-title">Outbreak map</span><span id="map-ct" class="dist-ct map-ct" style="display:none"><label>Ct&lt;</label><input type="number" min="1" max="99" step="1" placeholder="off"></span></h3>
+      <div id="map-body" class="panel-body"></div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
