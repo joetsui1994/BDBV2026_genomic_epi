@@ -90,7 +90,7 @@ function arrowHead(pPrev, pEnd, size) {
  * @param {string} containerId
  * @param {{id:string,health_zone:?string,health_area:?string,lat:?number,lon:?number}[]} tips
  */
-export function createMapPanel(containerId, tips, { onCtChange = () => {} } = {}) {
+export function createMapPanel(containerId, tips) {
   const map = L.map(containerId, { zoomControl: true });
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
     attribution: '© OpenStreetMap contributors © CARTO',
@@ -149,13 +149,10 @@ export function createMapPanel(containerId, tips, { onCtChange = () => {} } = {}
   // choropleth colour is toggled off.
   let zoneLayer = null, metric = 'risk', METRICS = null;   // current choropleth metric + definitions
   let choroLegend = null, choroLegendDiv = null;
-  let ctThreshold = null;            // Ct filter for the Positive metric (null = off)
-  let zonePosCt = new Map();         // upper Nom → positive-sample Ct values (for live re-counting)
-  let zoneCounts = new Map();        // upper Nom → {status counts} (dynamic; windowed by the brush)
-  let linelistRows = [];             // retained for windowed re-tally (set in addZoneLayer)
+  let zoneCounts = new Map();        // upper Nom → {confirmed,total} (dynamic; windowed by the brush)
+  let zoneDaily = new Map();         // upper Nom → (dateStr → confirmed) for windowed re-tally (set in addZoneLayer)
   let applyCounts = null;            // recompute breaks + redraw after a re-tally (set in addZoneLayer)
   let currentWindow = null;          // last brush date window; re-applied on line-list swaps
-  let applyCtThreshold = null;       // recompute Positive metric + redraw (set in addZoneLayer)
   const selectedZones = new Set();   // upper-cased Nom of currently-selected zones
   const nameToLayer = new Map();     // upper-cased Nom → polygon layer (for search-and-zoom)
   const nameToCentroid = new Map();  // upper-cased Nom → L.LatLng (for mobility arrows)
@@ -239,33 +236,12 @@ export function createMapPanel(containerId, tips, { onCtChange = () => {} } = {}
     if (zoneClickHandler) zoneClickHandler(name, { toggle: false });
   }
 
-  // Map-header Ct filter (mirrors the distribution panel's). Shown only on the Map tab while
-  // the Positive metric is selected. Two-way synced with the distribution input via
-  // onCtChange ⇄ setCtThreshold — each sets the other's value programmatically (which does
-  // NOT fire an 'input' event), so there is no sync loop.
-  const mapCtWrap = document.getElementById('map-ct');
-  const mapCtInput = mapCtWrap?.querySelector('input');
-  let onMapTab = true;
-  function updateCtVisibility() {
-    if (mapCtWrap) mapCtWrap.style.display = (onMapTab && metric === 'Positive') ? '' : 'none';
-  }
-  mapCtInput?.addEventListener('input', () => {
-    const v = parseInt(mapCtInput.value, 10);
-    ctThreshold = (Number.isFinite(v) && v > 0) ? v : null;
-    applyCtThreshold?.();       // recolour the Positive choropleth
-    onCtChange(ctThreshold);    // mirror into the distribution panel's Ct input
-  });
-
-  // Single map view (the prioritisation tab was removed). Ct input is always relevant here.
-  onMapTab = true;
-  updateCtVisibility();
-
-  // Re-tally the choropleth + markers from the current line-list rows over the current date
-  // window. Shared by setDateWindow (window change) and setLinelist (sample-collected toggle).
+  // Re-tally the choropleth + markers from the current per-zone daily counts over the current
+  // date window. Shared by setDateWindow (window change) and setZoneDaily (data swap).
   function retally() {
     const win = currentWindow;
-    const tally = tallyZones(linelistRows, win);
-    zoneCounts = tally.zoneCounts; zonePosCt = tally.zonePosCt;
+    const tally = tallyZones(zoneDaily, win);
+    zoneCounts = tally.zoneCounts;
     applyCounts?.();
     for (const { group, marker } of markers) {
       let n = group.tipIds.length;
@@ -310,47 +286,34 @@ export function createMapPanel(containerId, tips, { onCtChange = () => {} } = {}
     /** cb(zoneName) when a health-zone polygon is clicked. */
     onZoneClick(cb) { zoneClickHandler = cb; },
 
-    /** Set the Ct filter applied to the Positive metric (null/0 = off). Also mirrors the
-     *  value into the map-header Ct input (the distribution panel drives this). */
-    setCtThreshold(t) {
-      ctThreshold = (typeof t === 'number' && t > 0) ? t : null;
-      if (mapCtInput) mapCtInput.value = ctThreshold == null ? '' : String(ctThreshold);
-      applyCtThreshold?.();
-    },
-
     /** Filter the choropleth + markers to a time window (inclusive ms bounds), or null = all.
-     *  Re-tallies the line-list rows, reclasses, and shows/resizes markers by in-window count. */
+     *  Re-tallies the per-zone daily counts, reclasses, and shows/resizes markers by in-window count. */
     setDateWindow(d0, d1) {
       currentWindow = (d0 != null && d1 != null) ? { d0: +d0, d1: +d1 } : null;
       retally();
     },
 
-    /** Replace the line-list rows behind the choropleth (sample-collected toggle) and re-tally
-     *  over the current date window. Markers come from `tips`, so they are unaffected. */
-    setLinelist(rows) {
-      linelistRows = rows || [];
-      retally();
-    },
+    /** Replace the per-zone daily confirmed counts behind the choropleth and re-tally the window. */
+    setZoneDaily(daily) { zoneDaily = daily || new Map(); retally(); },
 
     /**
      * Add the health-zone layer: a multi-metric choropleth (relative risk + per-zone
-     * sample counts by status) with clickable selection. A button group switches the
+     * confirmed-case counts) with clickable selection. A button group switches the
      * metric; "Off" hides the colour but keeps zones clickable.
      * @param {GeoJSON.FeatureCollection} geojson  features w/ { Nom, PROVINCE, relative_risk, cx, cy }
-     * @param {Map<string,{Positive:number,Negative:number,Invalid:number,Unclassified:number,total:number}>} seedCounts  initial per-zone counts (upper-cased Nom)
+     * @param {Map<string,{confirmed:number,total:number}>} seedCounts  initial per-zone counts (upper-cased Nom)
+     * @param {Map<string,Map<string,number>>} daily  per-zone daily confirmed counts for windowed re-tally
      */
-    addZoneLayer(geojson, seedCounts = new Map(), posCt = new Map(), rows = []) {
-      const ZERO = { Positive: 0, Negative: 0, Invalid: 0, Unclassified: 0, total: 0 };
-      const countsOf = (f) => zoneCounts.get(upper(f.properties.Nom)) || ZERO;   // reads scope zoneCounts
+    addZoneLayer(geojson, seedCounts = new Map(), daily = new Map()) {
+      const ZERO = { confirmed: 0, total: 0 };
+      const countsOf = (f) => zoneCounts.get(upper(f.properties.Nom)) || ZERO;
       const intFmt = (x) => String(Math.round(x));
-      zoneCounts = seedCounts; zonePosCt = posCt; linelistRows = rows;
-      // Positives in a zone with Ct below the active threshold.
-      const posBelow = (f) => { const a = zonePosCt.get(upper(f.properties.Nom)); if (!a) return 0; let n = 0; for (const v of a) if (v < ctThreshold) n++; return n; };
+      zoneCounts = seedCounts; zoneDaily = daily;
 
       // Metric definitions: label, colour ramp, value accessor, classing kind.
       METRICS = {
-        risk:     { label: 'Relative risk',   ramp: RISK_RAMP,            kind: 'continuous', fmt: (x) => x.toFixed(2), value: (f) => f.properties.relative_risk },
-        Positive: { label: 'Positive samples', ramp: STATUS_RAMP.Positive, kind: 'count', fmt: intFmt, value: (f) => (ctThreshold == null ? countsOf(f).Positive : posBelow(f)) },
+        risk:      { label: 'Relative risk',  ramp: RISK_RAMP,            kind: 'continuous', fmt: (x) => x.toFixed(2), value: (f) => f.properties.relative_risk },
+        confirmed: { label: 'Confirmed cases', ramp: STATUS_RAMP.Positive, kind: 'count',      fmt: intFmt,             value: (f) => countsOf(f).confirmed },
       };
       // Class breaks for a metric (counts classed over the non-zero zones only).
       const recomputeBreaks = (cfg) => {
@@ -394,7 +357,7 @@ export function createMapPanel(containerId, tips, { onCtChange = () => {} } = {}
       const tooltipFor = (f) => {
         const nom = f.properties.Nom;
         if (metric === 'risk') { const r = f.properties.relative_risk; return `${nom} (health zone) — ${typeof r === 'number' ? r.toFixed(3) : 'n/a'} (RR)`; }
-        if (metric !== 'off') return `${nom} (health zone) — ${METRICS[metric].value(f) || 0} ${metric.toLowerCase()}`;
+        if (metric !== 'off') return `${nom} (health zone) — ${METRICS[metric].value(f) || 0} confirmed`;
         return `${nom} (health zone)`;
       };
       zoneLayer.bindTooltip('', { sticky: true });
@@ -420,7 +383,7 @@ export function createMapPanel(containerId, tips, { onCtChange = () => {} } = {}
         choroLegendDiv.style.display = '';
         const cfg = METRICS[metric];
         const lo = [cfg.min, ...cfg.breaks], hi = [...cfg.breaks, cfg.max];
-        const title = (metric === 'Positive' && ctThreshold != null) ? `Positive · Ct < ${ctThreshold}` : cfg.label;
+        const title = cfg.label;
         let html = `<div class="lg-title">${title}</div>`;
         if (cfg.kind === 'count') html += `<span><i style="background:${COUNT_NODATA};border-color:rgba(0,0,0,0.12)"></i>0 (none)</span>`;
         // No data for this count metric (no zone with a value > 0): show just the
@@ -428,11 +391,6 @@ export function createMapPanel(containerId, tips, { onCtChange = () => {} } = {}
         const noData = cfg.kind === 'count' && !(cfg.max > 0);
         if (!noData) for (let i = 0; i < cfg.ramp.length; i++) html += `<span><i style="background:${cfg.ramp[i]};border-color:rgba(0,0,0,0.12)"></i>${cfg.fmt(lo[i])}–${cfg.fmt(hi[i])}</span>`;
         choroLegendDiv.innerHTML = html;
-      };
-      // Ct threshold change → recompute the Positive metric, redraw if it's active.
-      applyCtThreshold = () => {
-        recomputeBreaks(METRICS.Positive);
-        if (metric === 'Positive') { restyle(); renderLegend(); }
       };
       // After a windowed re-tally: reclass every count metric and redraw.
       applyCounts = () => {
@@ -443,10 +401,10 @@ export function createMapPanel(containerId, tips, { onCtChange = () => {} } = {}
       choroLegend.onAdd = () => { choroLegendDiv = L.DomUtil.create('div', 'map-legend choropleth-legend'); renderLegend(); return choroLegendDiv; };
       choroLegend.addTo(map);
 
-      // metric button group: Off + Relative risk + Positive.
-      const SHORT = { off: 'Off', risk: 'Risk', Positive: 'Pos' };
-      const FULL  = { off: 'Hide colour (zones stay clickable)', risk: 'Relative risk', Positive: 'Positive samples' };
-      const ORDER_MAIN = ['off', 'risk', 'Positive'];
+      // metric button group: Off + Relative risk + Confirmed cases.
+      const SHORT = { off: 'Off', risk: 'Risk', confirmed: 'Cases' };
+      const FULL  = { off: 'Hide colour (zones stay clickable)', risk: 'Relative risk', confirmed: 'Confirmed cases' };
+      const ORDER_MAIN = ['off', 'risk', 'confirmed'];
       let groupWrap = null;
       const buildGroup = () => {
         if (!groupWrap) return;
@@ -459,7 +417,6 @@ export function createMapPanel(containerId, tips, { onCtChange = () => {} } = {}
             metric = key;
             groupWrap.querySelectorAll('button').forEach((c) => c.classList.toggle('active', c.dataset.metric === key));
             restyle(); renderLegend();
-            updateCtVisibility();   // the Ct input rides with the Positive metric
           };
         }
       };
