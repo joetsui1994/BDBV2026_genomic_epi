@@ -8,7 +8,7 @@ import { makeSplitter, makeColumnSplitters } from './splitter.js';
 import { makeCollapsibleColumn } from './panel-collapse.js';
 import { createNePanel } from './ne-panel.js';
 import { tallyZones } from './zone-tally.js';
-import { parseStatus, seriesTotal, toZoneDaily } from './status-data.js';
+import { parseStatus, toZoneDaily } from './status-data.js';
 
 // Parse the health-zone alias crosswalk (observed_name → canonical_nom) into a
 // normaliser. Health-zone names in the mobility / tree data are mapped onto
@@ -81,16 +81,21 @@ const seqTips = tips.filter(t => t.date).map(t => ({
   health_area: (t.health_area && t.health_area !== 'null') ? t.health_area : '',
 }));
 
-// Histogram scope resolver: given a scope ({zones, province}), return the daily confirmed-count
-// series plus the sequence-track tips filtered to match. Zones merge; province falls back to the
-// province series; national is the default.
+// Histogram scope resolver: given a scope ({zones, province}), return the daily confirmed-case
+// series — Map<date, {observed, imputed}>, split by onset-date imputation so the histogram can stack
+// imputed on top — plus the sequence-track tips filtered to match. Zones merge (summing each split
+// separately); province falls back to the province series; national is the default. The status maps
+// already hold the {observed, imputed} split, so national/province are returned directly.
 function resolveSeries(scope) {
   if (scope.zones && scope.zones.length) {
     const merged = new Map();
     const wanted = new Set(scope.zones.map(z => up(canon(z))));
     for (const z of wanted) {
       const dc = status.zones.get(z);
-      if (dc) for (const [d, n] of seriesTotal(dc)) merged.set(d, (merged.get(d) || 0) + n);
+      if (dc) for (const [d, cell] of dc) {
+        const cur = merged.get(d) || { observed: 0, imputed: 0 };
+        merged.set(d, { observed: cur.observed + cell.observed, imputed: cur.imputed + cell.imputed });
+      }
     }
     const tipsF = seqTips.filter(t => wanted.has(up(t.health_zone)));
     return { series: merged, tips: tipsF };
@@ -99,9 +104,9 @@ function resolveSeries(scope) {
     const dc = status.provinces.get(scope.province);
     const want = normProv(scope.province);
     const tipsF = seqTips.filter((t) => zoneProvince.get(up(t.health_zone)) === want);
-    return { series: dc ? seriesTotal(dc) : new Map(), tips: tipsF };
+    return { series: dc || new Map(), tips: tipsF };
   }
-  return { series: seriesTotal(status.national), tips: seqTips };
+  return { series: status.national, tips: seqTips };
 }
 
 // Markers are built from the tips themselves (grouped by health_area → zone).

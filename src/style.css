@@ -159,6 +159,15 @@ body {
 #dist-beyond:hover { background: rgba(124, 29, 29, 0.1); color: var(--maroon); }
 #dist-beyond.active { background: rgba(124, 29, 29, 0.18); border-color: var(--maroon); color: var(--maroon); }
 #dist-beyond.active:hover { background: rgba(124, 29, 29, 0.24); }
+/* Imputed-onset toggle: matches the Ne panel's SkyGrid dataset toggle — muted when off, SkyGrid
+   green (#587e72 text/border + light band fill) when active. Default-active, so it opens green. */
+#dist-imputed {
+  font-weight: 600;
+  color: var(--muted); background: rgba(0, 0, 0, 0.02); border-color: var(--border);
+}
+#dist-imputed:hover { background: rgba(88, 126, 114, 0.1); color: #587e72; }
+#dist-imputed.active { color: #587e72; border-color: #587e72; background: rgba(88, 126, 114, 0.18); }
+#dist-imputed.active:hover { background: rgba(88, 126, 114, 0.26); }
 .tree-toggle {
   float: right; margin-top: -1px; margin-left: 6px;
   font-size: 9.5px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
@@ -206,6 +215,7 @@ body {
   background: rgba(255, 255, 255, 0.82); padding: 2px 6px; border-radius: 5px;
 }
 .dist-legend span { display: flex; align-items: center; gap: 4px; }
+.dist-legend .dist-leg-imputed.off { opacity: 0.35; }   /* dimmed when the imputed toggle is off */
 .dist-legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; flex: none; }
 .seq-dot { border-radius: 50% !important; opacity: 0.45; }   /* sequence swatch = circle, matching the track circles' opacity */
 

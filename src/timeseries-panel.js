@@ -1,16 +1,18 @@
 import { createTimeScale, scaleFromAnchors } from './time-scale.js';
 
 // "Sample distribution" panel: a bar chart of confirmed cases by onset date — one
-// bar per day. The x-axis is locked to the tree's view transform (stays aligned with
-// the phylogeny regardless of the subset plotted); the y-axis rescales to the data.
-// A province <select> + zone selection (driven by the map/coordinator) re-scope the
-// daily-count series the bars are drawn from.
+// bar per day, each split into observed-onset cases (solid base) and imputed-onset cases
+// (lighter, stacked on top; toggleable). The x-axis is locked to the tree's view transform
+// (stays aligned with the phylogeny regardless of the subset plotted); the y-axis rescales
+// to the data. A province <select> + zone selection (driven by the map/coordinator) re-scope
+// the daily-count series the bars are drawn from.
 
 const SVNS = 'http://www.w3.org/2000/svg';
 const PAD = { left: 34, right: 20, top: 14, bottom: 22 };
 const DAY_MS = 86400000;
 
-const CONFIRMED_COLOR = '#9e2b2b';   // confirmed-case bars (maroon)
+const CONFIRMED_COLOR = '#9e2b2b';   // observed-onset confirmed cases (solid maroon base)
+const IMPUTED_COLOR   = '#587e72';   // imputed-onset confirmed cases (SkyGrid green, stacked on top)
 
 /** Latest dated day with a positive count + the tree-width fraction it implies.
  *  series: Map<dateStr, count>; t0/t1: domain ms; on: showBeyond. Returns { effMax (ms), f∈[F_MIN,1] }. */
@@ -77,7 +79,7 @@ function timeTicks(pxWidth, t0, t1) {
 /**
  * @param {string} containerId
  * @param {{minDate:string,maxDate:string}} domain  tree time domain (root → most-recent)
- * @param {(scope:{zones:string[],province:?string})=>{series:Map<string,number>,tips:object[]}} resolveSeries
+ * @param {(scope:{zones:string[],province:?string})=>{series:Map<string,{observed:number,imputed:number}>,tips:object[]}} resolveSeries
  * @param {object} [opts]
  */
 export function createTimeseriesPanel(containerId, domain, resolveSeries, { provinceNames = [], onDeselect = () => {}, onExtentChange = () => {}, onWindowChange = () => {}, onSettling = () => {}, onTransform = () => {} } = {}) {
@@ -87,8 +89,15 @@ export function createTimeseriesPanel(containerId, domain, resolveSeries, { prov
   // Current geographic scope + resolved data (bars series + sequence-track tips).
   let scope = { zones: [], province: null };
   let resolved = resolveSeries(scope);
-  let series = resolved.series;      // Map<dateStr, confirmed count>
+  let series = resolved.series;      // Map<dateStr, {observed, imputed}>  (confirmed cases, split by onset imputation)
   let selTips = resolved.tips;       // tree tips for the sequence track, filtered to the scope
+
+  // Whether imputed-onset cases are shown (stacked on top). Default on — toggled from the header.
+  let showImputed = true;
+  // The count that drives the bars/axis/counts for a day: observed + (imputed when shown).
+  const dispTotal = (cell) => cell ? cell.observed + (showImputed ? cell.imputed : 0) : 0;
+  // A date→displayed-total map, for the pure extentFraction() (which expects Map<date, number>).
+  const displayedMap = () => { const m = new Map(); for (const [ds, cell] of series) m.set(ds, dispTotal(cell)); return m; };
 
   // Province selector (national default) — a scope control in the panel's top-left.
   const left = document.createElement('div');
@@ -107,7 +116,8 @@ export function createTimeseriesPanel(containerId, domain, resolveSeries, { prov
 
   const legend = document.createElement('div');
   legend.className = 'dist-legend';
-  legend.innerHTML = `<span><i style="background:${CONFIRMED_COLOR}"></i>Confirmed</span>`
+  legend.innerHTML = `<span><i style="background:${CONFIRMED_COLOR}"></i>Observed</span>`
+    + `<span class="dist-leg-imputed"><i style="background:${IMPUTED_COLOR}"></i>Imputed</span>`
     + `<span><i class="seq-dot" style="background:${SEQ_COLOR}"></i>Sequences</span>`;
 
   const controls = document.createElement('div');   // top-left row: [province selector] + legend
@@ -127,10 +137,12 @@ export function createTimeseriesPanel(containerId, domain, resolveSeries, { prov
   summary.style.display = 'none';
   host.append(controls, holder, tip, summary);   // tip/summary on host (holder is wiped each render)
 
-  function showTip(ev, dateStr, count) {
+  function showTip(ev, dateStr, cell) {
     const d = new Date(dateStr);
+    const obs = cell.observed || 0, imp = cell.imputed || 0;
     let html = `<div class="tip-date">${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>`;
-    html += `<div class="tip-row"><i style="background:${CONFIRMED_COLOR}"></i>Confirmed<b>${count}</b></div>`;
+    html += `<div class="tip-row"><i style="background:${CONFIRMED_COLOR}"></i>Observed<b>${obs}</b></div>`;
+    if (showImputed && imp) html += `<div class="tip-row"><i style="background:${IMPUTED_COLOR}"></i>Imputed<b>${imp}</b></div>`;
     const seqN = seqMap.get(dateStr) || 0;
     if (seqN) html += `<div class="tip-row"><i class="seq-dot" style="background:${SEQ_COLOR}"></i>Sequences<b>${seqN}</b></div>`;
     tip.innerHTML = html;
@@ -258,7 +270,7 @@ export function createTimeseriesPanel(containerId, domain, resolveSeries, { prov
 
   // Recompute the effective max from the current scope, sync the tree fraction, re-render.
   function applyExtent() {
-    const ext = extentFraction(series, t0, t1, showBeyond);
+    const ext = extentFraction(displayedMap(), t0, t1, showBeyond);
     effMaxMs = ext.effMax;
     autoCorr = 0;            // user action: allow the calibration loop to re-converge
     syncTreeFraction();
@@ -266,16 +278,17 @@ export function createTimeseriesPanel(containerId, domain, resolveSeries, { prov
   }
 
   // ── CSV export ─────────────────────────────────────────────────────────────
-  // One row per date: the confirmed-case count. Honours the geographic scope and the
-  // brushed window (when set, dates are clipped to it; otherwise to the visible axis).
-  const EXPORT_COLS = ['date', 'confirmed'];
+  // One row per date: observed + imputed confirmed-case counts (both always emitted, regardless of
+  // the toggle). Honours the geographic scope and the brushed window (when set, dates are clipped to
+  // it; otherwise to the visible axis).
+  const EXPORT_COLS = ['date', 'confirmed_observed', 'confirmed_imputed'];
   const ymd = (ms) => new Date(ms).toISOString().slice(0, 10);
   function exportWindow() { return win ? { lo: Math.min(win.d0, win.d1), hi: Math.max(win.d0, win.d1) } : null; }
   function exportRows() {
     const w = exportWindow();
     const inRange = (ds) => { const t = +new Date(ds); if (isNaN(t)) return false; return w ? (t >= w.lo && t <= w.hi) : (t >= t0 && t <= effMaxMs); };
     const out = [];
-    for (const [ds, n] of series) if (n && inRange(ds)) out.push({ date: ds, confirmed: n });
+    for (const [ds, cell] of series) if ((cell.observed + cell.imputed) > 0 && inRange(ds)) out.push({ date: ds, confirmed_observed: cell.observed, confirmed_imputed: cell.imputed });
     return out.sort((a, b) => a.date.localeCompare(b.date));
   }
   const buildCsvText = (rows) =>
@@ -362,6 +375,18 @@ export function createTimeseriesPanel(containerId, domain, resolveSeries, { prov
     beginSettle();   // mask the squash/unsquash transition (fades back once the refit settles)
     applyExtent();
   };
+  // Imputed-onset toggle: show/hide the lighter stacked segment (and its contribution to the axis,
+  // counts, tooltip). Default on; reflects state via the button's active class + the dimmed legend swatch.
+  const impBtn = document.getElementById('dist-imputed');
+  if (impBtn) {
+    impBtn.classList.toggle('active', showImputed);
+    impBtn.onclick = () => {
+      showImputed = !showImputed;
+      impBtn.classList.toggle('active', showImputed);
+      legend.querySelector('.dist-leg-imputed')?.classList.toggle('off', !showImputed);
+      applyExtent();   // imputed-only late dates may drop out of the extent → recompute + re-render
+    };
+  }
 
   // Confirmed cases the chart can't show for the current scope: dated outside the tree
   // window. (The map choropleth counts all of them, hence the difference.)
@@ -369,7 +394,8 @@ export function createTimeseriesPanel(containerId, domain, resolveSeries, { prov
   function updateNote() {
     if (!note) return;
     let after = 0, before = 0;
-    for (const [ds, n] of series) {
+    for (const [ds, cell] of series) {
+      const n = dispTotal(cell);
       if (!n) continue;
       const t = +new Date(ds);
       if (isNaN(t)) continue;
@@ -391,7 +417,7 @@ export function createTimeseriesPanel(containerId, domain, resolveSeries, { prov
     if (!win) { summary.style.display = 'none'; return; }
     const lo = Math.min(win.d0, win.d1), hi = Math.max(win.d0, win.d1);
     const inWin = (v) => { const t = +new Date(v); return !isNaN(t) && t >= lo && t <= hi; };
-    let cases = 0; for (const [ds, n] of series) if (inWin(ds)) cases += n;
+    let cases = 0; for (const [ds, cell] of series) if (inWin(ds)) cases += dispTotal(cell);
     let seq = 0;   for (const tp of selTips) if (inWin(tp.date)) seq++;
     const days = Math.max(1, Math.round((hi - lo) / 86400000));
     const seqPct = cases ? Math.round((seq / cases) * 100) : null;
@@ -403,15 +429,16 @@ export function createTimeseriesPanel(containerId, domain, resolveSeries, { prov
   }
 
   // Bars come straight from the resolved daily series, clipped to the (possibly extended) axis.
+  // A day with no *displayed* cases (e.g. imputed-only when the toggle is off) is dropped.
   function aggregate() {
     const byDay = new Map();
-    for (const [ds, n] of series) {
-      if (!n) continue;
+    for (const [ds, cell] of series) {
+      if (dispTotal(cell) <= 0) continue;
       const t = +new Date(ds);
       if (isNaN(t) || t < t0 || t > effMaxMs) continue;
-      byDay.set(ds, n);
+      byDay.set(ds, cell);
     }
-    return byDay;   // Map<dateStr, confirmed count>
+    return byDay;   // Map<dateStr, {observed, imputed}>
   }
 
   function seqByDate() {
@@ -462,7 +489,7 @@ export function createTimeseriesPanel(containerId, domain, resolveSeries, { prov
     const byDay = aggregate();
     seqMap = seqByDate();
     let yMax = 1;
-    for (const n of byDay.values()) if (n > yMax) yMax = n;
+    for (const cell of byDay.values()) { const tot = dispTotal(cell); if (tot > yMax) yMax = tot; }
     // Reserve a band below the legend for the sequence-availability dot track (blue) when the
     // current scope has sequences; the bars start below it so no line crosses them.
     const trackY = PAD.top + 24;                          // sequences (blue)
@@ -496,11 +523,14 @@ export function createTimeseriesPanel(containerId, domain, resolveSeries, { prov
         height: baseY - PAD.top, fill: 'rgba(124,29,29,0.10)', stroke: 'rgba(124,29,29,0.45)', 'stroke-width': 1, 'pointer-events': 'none' }));
     }
 
-    for (const [dateStr, count] of byDay) {
-      if (!count) continue;
+    for (const [dateStr, cell] of byDay) {
       const x = dx(dateStr) - barW / 2;
-      const h = (count / yMax) * plotH;
-      svg.appendChild(el('rect', { x, y: baseY - h, width: barW, height: h, fill: CONFIRMED_COLOR }));
+      const hObs = (cell.observed / yMax) * plotH;
+      if (cell.observed > 0) svg.appendChild(el('rect', { x, y: baseY - hObs, width: barW, height: hObs, fill: CONFIRMED_COLOR }));
+      if (showImputed && cell.imputed > 0) {          // imputed stacked on top, lighter maroon
+        const hImp = (cell.imputed / yMax) * plotH;
+        svg.appendChild(el('rect', { x, y: baseY - hObs - hImp, width: barW, height: hImp, fill: IMPUTED_COLOR }));
+      }
     }
 
     // Sequence-availability track: a dashed blue line + circles sized by #sequences/day.
@@ -526,12 +556,12 @@ export function createTimeseriesPanel(containerId, domain, resolveSeries, { prov
     // include sequence-only dates so their circles are hoverable too.
     const dayPx = Math.abs(scale.dateToX(new Date(t0 + DAY_MS)) - xMin);
     for (const dateStr of new Set([...byDay.keys(), ...seqMap.keys()])) {
-      const count = byDay.get(dateStr) || 0;
+      const cell = byDay.get(dateStr) || { observed: 0, imputed: 0 };
       const hit = el('rect', {
         x: dx(dateStr) - dayPx / 2, y: PAD.top,
         width: Math.max(2, dayPx), height: baseY - PAD.top, fill: 'transparent',
       });
-      hit.addEventListener('mousemove', (ev) => showTip(ev, dateStr, count));
+      hit.addEventListener('mousemove', (ev) => showTip(ev, dateStr, cell));
       svg.appendChild(hit);
     }
     svg.addEventListener('mouseleave', hideTip);
