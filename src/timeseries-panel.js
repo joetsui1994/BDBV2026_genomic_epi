@@ -10,31 +10,15 @@ const SVNS = 'http://www.w3.org/2000/svg';
 const PAD = { left: 34, right: 20, top: 14, bottom: 22 };
 const DAY_MS = 86400000;
 
-const STATUS = ['Positive'];
-const STATUS_SET = new Set(STATUS);
-const STATUS_COLOR = {
-  Positive:     '#9e2b2b',
-  Negative:     '#6f9bbf',
-  Invalid:      '#d8a86f',
-  Unclassified: '#d3cfc8',
-};
-/** A row passes the Ct filter when: the filter is off (ct null), or it isn't a positive,
- *  or it's a positive with a numeric Ct strictly below the threshold. */
-export function ctPass(r, ct) {
-  if (ct == null || r.status !== 'Positive') return true;
-  const v = parseFloat(r.ct);
-  return Number.isFinite(v) && v < ct;
-}
+const CONFIRMED_COLOR = '#9e2b2b';   // confirmed-case bars (maroon)
 
-/** Latest *plotted* date for the given rows + the tree-width fraction it implies.
- *  Uses the same filter as the bars (status-valid AND ctPass), so a Ct-hidden point
- *  never extends the axis. rows: selection-filtered rows; t0/t1: domain ms; on: showBeyond;
- *  ct: current Ct threshold or null. Returns { effMax (ms), f∈[F_MIN,1] }. */
-export function extentFraction(rows, t0, t1, on, ct = null, F_MIN = 0.4) {
+/** Latest dated day with a positive count + the tree-width fraction it implies.
+ *  series: Map<dateStr, count>; t0/t1: domain ms; on: showBeyond. Returns { effMax (ms), f∈[F_MIN,1] }. */
+export function extentFraction(series, t0, t1, on, F_MIN = 0.4) {
   let effMax = t1;
-  if (on) for (const r of rows) {
-    if (!STATUS_SET.has(r.status) || !ctPass(r, ct)) continue;
-    const t = +new Date(r.date);
+  if (on) for (const [ds, n] of series) {
+    if (!n) continue;
+    const t = +new Date(ds);
     if (!isNaN(t) && t > effMax) effMax = t;
   }
   const f = effMax > t0 ? Math.max(F_MIN, Math.min(1, (t1 - t0) / (effMax - t0))) : 1;
