@@ -13,7 +13,7 @@
     "data:tree": "node scripts/build-tree.mjs",
     "data:skygrid": "node scripts/build-skygrid.mjs",
     "data:exponential": "node scripts/build-exponential.mjs",
-    "data:linelist": "node scripts/filter-linelist.mjs"
+    "data:status": "node scripts/build-status.mjs"
   },
   "devDependencies": {
     "mapshaper": "^0.7.22",

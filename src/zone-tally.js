@@ -1,37 +1,25 @@
 // src/zone-tally.js
-// Tally line-list rows into per-zone status counts + positive-Ct lists, optionally
-// restricted to a time window. Pure (no DOM); shared by the initial render and the
-// brush's windowed recompute. Rows carry a canonical health_zone (parseLinelist applies it).
-const ZONE_STATUS = ['Positive', 'Negative', 'Invalid', 'Unclassified'];
-const up = (s) => (s || '').toUpperCase().trim();
+// Roll a per-zone daily confirmed-count structure into per-zone totals for the choropleth,
+// optionally restricted to a time window. Pure (no DOM); shared by the initial render and the
+// brush's windowed recompute. Keys are UPPER-cased canonical Nom.
 
 /**
- * @param {{health_zone:string,status:string,date:string,ct:string}[]} rows
- * @param {{d0:number,d1:number}|null} window  inclusive ms bounds, or null for all rows
- * @returns {{ zoneCounts: Map<string,object>, zonePosCt: Map<string,number[]> }}  keyed by UPPER Nom
+ * @param {Map<string, Map<string, number>>} zoneDaily  UPPER Nom → (dateStr → confirmed total)
+ * @param {{d0:number,d1:number}|null} window  inclusive ms bounds, or null for all dates
+ * @returns {{ zoneCounts: Map<string, {confirmed:number, total:number}> }}
  */
-export function tallyZones(rows, window = null) {
+export function tallyZones(zoneDaily, window = null) {
   const zoneCounts = new Map();
-  const zonePosCt = new Map();
-  for (const r of rows) {
-    if (window) {
-      const t = +new Date(r.date);
-      if (isNaN(t) || t < window.d0 || t > window.d1) continue;   // undated / out-of-window dropped
-    }
-    const z = up(r.health_zone);
-    if (!z) continue;
-    if (ZONE_STATUS.includes(r.status)) {
-      let o = zoneCounts.get(z);
-      if (!o) { o = { Positive: 0, Negative: 0, Invalid: 0, Unclassified: 0, total: 0 }; zoneCounts.set(z, o); }
-      o[r.status]++; o.total++;
-    }
-    if (r.status === 'Positive') {
-      const v = parseFloat(r.ct);
-      if (Number.isFinite(v)) {
-        if (!zonePosCt.has(z)) zonePosCt.set(z, []);
-        zonePosCt.get(z).push(v);
+  for (const [nom, daily] of zoneDaily) {
+    let confirmed = 0;
+    for (const [ds, n] of daily) {
+      if (window) {
+        const t = +new Date(ds);
+        if (isNaN(t) || t < window.d0 || t > window.d1) continue;
       }
+      confirmed += n;
     }
+    if (confirmed > 0) zoneCounts.set(nom, { confirmed, total: confirmed });
   }
-  return { zoneCounts, zonePosCt };
+  return { zoneCounts };
 }

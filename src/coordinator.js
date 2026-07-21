@@ -73,7 +73,7 @@ export function startCoordinator(tree, map, ts, meta, tips = [], canon = (v) => 
     programmatic = false;
     zoneSelecting = false;
     // (date markers are set by onSelect from the selected tips, during selectByNames)
-    ts.setSelection({ zones: [zoneName], areas: [] });
+    ts.setZones([zoneName]);
     map.highlightZones([zoneName]);
   });
 
@@ -95,8 +95,7 @@ export function startCoordinator(tree, map, ts, meta, tips = [], canon = (v) => 
     if (!programmatic) activeKey = null;            // a direct tree click is not a map-toggle target
 
     const zones = new Set(selected.map((n) => cz(n.annotations?.health_zone)).filter(Boolean));
-    const areas = new Set(selected.map((n) => real(n.annotations?.health_area)).filter(Boolean));
     map.highlightZones([...zones]);
-    ts.setSelection({ zones: [...zones], areas: [...areas] });
+    ts.setZones([...zones]);
   });
 }

@@ -1,34 +1,5 @@
 import { defineConfig } from 'vite';
 import { execSync } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { filterCsvToPositives } from './scripts/linelist-lib.mjs';
-
-// Build-time privacy backstop: filter every line-list CSV in the build output to positive cases
-// only, so a forgotten `npm run data:linelist` can never publish non-positive individual records
-// to the deployed /data/ endpoint. Runs after the public/ dir is copied to the output.
-function positivesOnlyLineLists() {
-  let outDir = 'dist';
-  return {
-    name: 'positives-only-line-lists',
-    apply: 'build',
-    configResolved(cfg) { outDir = cfg.build.outDir; },
-    closeBundle() {
-      const dataDir = join(outDir, 'data');
-      if (!existsSync(dataDir)) return;
-      for (const f of readdirSync(dataDir)) {
-        if (!/^linelist_data.*\.csv$/.test(f)) continue;
-        const p = join(dataDir, f);
-        const before = readFileSync(p, 'utf8');
-        const after = filterCsvToPositives(before);
-        if (after !== before) {
-          writeFileSync(p, after);
-          this.warn(`positives-only backstop filtered ${f}`);
-        }
-      }
-    },
-  };
-}
 
 // "Last updated" = the most recent commit touching public/data (falls back to the
 // build time if git history isn't available). Injected as __LAST_UPDATED__ at build
@@ -49,6 +20,6 @@ export default defineConfig(({ command }) => ({
   base: command === 'build' ? '/BDBV2026_genomic_epi/' : '/',
   define: { __LAST_UPDATED__: JSON.stringify(dataLastUpdated()) },
   build: { target: 'esnext' },
-  plugins: [positivesOnlyLineLists()],
+  plugins: [],
   test: { environment: 'node' },
 }));
