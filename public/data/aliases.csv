@@ -36,3 +36,4 @@ Mungwalu,Mongbwalu,egc_tree,Spelling variant of Mongbwalu in the n139 tree
 Sota,Nyakunde,egc_tree,Locality in the Nyakunde health zone (per data owner)
 Kalamu 2,Kalamu II,dhis,Arabic-numeral variant of canonical Kinshasa sub-zone (geojson uses roman numerals)
 Mont Ngafula 1,Mont Ngafula I,dhis,Arabic-numeral variant of canonical Kinshasa sub-zone (geojson uses roman numerals)
+Miti Murhesa,Miti-Murhesa,dhis,DHIS/status-aggregate zone name uses a space; geojson Nom is hyphenated (Sud-Kivu)
