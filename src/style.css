@@ -125,7 +125,7 @@ body {
 #tree-collapse, #ne-collapse { margin-right: 8px; }
 /* The Ne "full extent" reveal is an arrow icon — match the distribution header's → button
    (#dist-beyond): same 9.5px / bold glyph, minus the .tree-toggle uppercase letter-spacing. */
-#ne-fullextent { font-size: 9.5px; font-weight: 700; line-height: 1; padding: 1px 7px; letter-spacing: 0; }
+#ne-fullextent { font-size: 9.5px; font-weight: 700; padding: 1px 7px; letter-spacing: 0; }
 .panel-collapse:hover { color: var(--ink); }
 /* Disabled: this is the only expanded panel, so it can't be collapsed (≥1 must stay open). */
 .panel-collapse:disabled { opacity: 0.3; cursor: default; }
@@ -236,7 +236,7 @@ body {
 .dist-head-main { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 5px; }
 .dist-head-title { flex: none; }
 .dist-head-sub { flex: 1 1 auto; min-width: 0; }
-.dist-tools { flex: none; display: flex; align-items: center; gap: 8px; }
+.dist-tools { flex: none; display: flex; align-items: center; gap: 6px; }   /* match the 6px button gap in the Ne header */
 .dist-tools #dist-beyond { margin-left: 0; }
 
 /* CSV export confirmation dialog (sample-distribution download) */
