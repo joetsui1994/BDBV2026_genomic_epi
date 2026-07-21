@@ -40,6 +40,9 @@ describe('extentFraction', () => {
   it('ignores zero-count days when computing the extent', () => {
     expect(extentFraction(series([['2026-06-03', 0]]), T0, T1, true).effMax).toBe(T1);
   });
+  it('clamps f to the floor for a far outlier date', () => {
+    expect(extentFraction(new Map([['2027-01-01', 1]]), T0, T1, true).f).toBe(0.4);
+  });
 });
 
 describe('brushWindow', () => {
