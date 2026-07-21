@@ -152,7 +152,7 @@ export function createMapPanel(containerId, tips) {
   let zoneCounts = new Map();        // upper Nom → {confirmed,total} (dynamic; windowed by the brush)
   let zoneDaily = new Map();         // upper Nom → (dateStr → confirmed) for windowed re-tally (set in addZoneLayer)
   let applyCounts = null;            // recompute breaks + redraw after a re-tally (set in addZoneLayer)
-  let currentWindow = null;          // last brush date window; re-applied on line-list swaps
+  let currentWindow = null;          // last brush date window; re-applied on data swaps
   const selectedZones = new Set();   // upper-cased Nom of currently-selected zones
   const nameToLayer = new Map();     // upper-cased Nom → polygon layer (for search-and-zoom)
   const nameToCentroid = new Map();  // upper-cased Nom → L.LatLng (for mobility arrows)
@@ -237,7 +237,7 @@ export function createMapPanel(containerId, tips) {
   }
 
   // Re-tally the choropleth + markers from the current per-zone daily counts over the current
-  // date window. Shared by setDateWindow (window change) and setZoneDaily (data swap).
+  // date window.
   function retally() {
     const win = currentWindow;
     const tally = tallyZones(zoneDaily, win);
@@ -292,9 +292,6 @@ export function createMapPanel(containerId, tips) {
       currentWindow = (d0 != null && d1 != null) ? { d0: +d0, d1: +d1 } : null;
       retally();
     },
-
-    /** Replace the per-zone daily confirmed counts behind the choropleth and re-tally the window. */
-    setZoneDaily(daily) { zoneDaily = daily || new Map(); retally(); },
 
     /**
      * Add the health-zone layer: a multi-metric choropleth (relative risk + per-zone

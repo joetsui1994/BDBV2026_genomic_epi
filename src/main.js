@@ -67,6 +67,12 @@ const zoneDaily = toZoneDaily(status.zones);           // Map<UPPER Nom, Map<dat
 const { zoneCounts } = tallyZones(zoneDaily, null);    // seed per-zone confirmed totals
 const up = (s) => (s || '').toUpperCase().trim();
 
+// Zone → province (normalised) from the geojson, for filtering the sequence track under a province
+// scope. Populated once the geojson loads (below); empty before then. Diacritics are stripped so the
+// aggregate's province names (e.g. "Kasai") match the geojson's (e.g. "Kasaï").
+const zoneProvince = new Map();   // UPPER Nom → normalised province
+const normProv = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
+
 // Sequence (tree-tip) dates for the sample-distribution availability track — zone
 // canonicalised so they filter with the same selection as the bars.
 const seqTips = tips.filter(t => t.date).map(t => ({
@@ -91,7 +97,9 @@ function resolveSeries(scope) {
   }
   if (scope.province) {
     const dc = status.provinces.get(scope.province);
-    return { series: dc ? seriesTotal(dc) : new Map(), tips: seqTips };
+    const want = normProv(scope.province);
+    const tipsF = seqTips.filter((t) => zoneProvince.get(up(t.health_zone)) === want);
+    return { series: dc ? seriesTotal(dc) : new Map(), tips: tipsF };
   }
   return { series: seriesTotal(status.national), tips: seqTips };
 }
@@ -106,6 +114,7 @@ const map = createMapPanel('map-body', tips);
 fetch(`${BASE}data/health-zones.geojson`)
   .then(r => r.json())
   .then(zones => {
+    for (const f of zones.features) zoneProvince.set(up(f.properties.Nom), normProv(f.properties.PROVINCE));
     map.addZoneLayer(zones, zoneCounts, zoneDaily);
     return fetch(`${BASE}data/flowminder__inflow__static.matrix.csv`)
       .then(r => r.text())

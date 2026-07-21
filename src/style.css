@@ -152,7 +152,7 @@ body {
 /* "Look beyond" toggle: same muted active/faint-inactive treatment as .tree-toggle
    (scoped to #dist-beyond so the sibling CSV button keeps its own styling). */
 #dist-beyond {
-  margin-left: 10px; font-weight: 700;   /* match the Ct↔CSV gap; arrow glyph */
+  margin-left: 10px; font-weight: 700;   /* match the CSV↔→ gap; arrow glyph */
   color: rgba(124, 29, 29, 0.65); background: rgba(124, 29, 29, 0.035);
   border-color: rgba(124, 29, 29, 0.15);
 }
@@ -205,7 +205,7 @@ body {
   margin-left: 7px; font-size: 9px; font-weight: 500; letter-spacing: 0.02em;
   text-transform: none; color: var(--muted);
 }
-/* Header: title+scope wrap to as many lines as needed; the Ct/CSV/→ tools stay pinned
+/* Header: title+scope wrap to as many lines as needed; the CSV/→ tools stay pinned
    top-right (align-items:flex-start) so a long zone list never pushes them down. */
 #timeseries > h3 { display: flex; align-items: flex-start; gap: 8px; white-space: normal; }
 /* Title is a fixed column; the scope/note wrap in their own column beside it, so wrapped
@@ -272,10 +272,8 @@ body {
   font-variant-numeric: tabular-nums;
 }
 .dist-window-summary .ws-range { font-weight: 600; margin-bottom: 2px; }
-.dist-window-summary .ws-dim { color: var(--muted); }
 /* Only the count is bold (the label stays normal weight), matching the heatmap tooltip. */
 .dist-window-summary .ws-seq { color: #7c1d1d; }
-.dist-window-summary .ws-alloc { color: #205c4c; }
 
 /* Floating node-info card (pinned top-left of the tree, below the toolbar — `top` set in JS) */
 .node-info {
