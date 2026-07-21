@@ -26,6 +26,9 @@ describe('seriesTotal', () => {
     const s = parseStatus(CSV);
     expect([...seriesTotal(s.national)]).toEqual([['2026-04-20', 2], ['2026-04-21', 2]]);
   });
+  it('returns an empty map for a missing/undefined series (missing province/zone)', () => {
+    expect([...seriesTotal(undefined)]).toEqual([]);
+  });
 });
 
 describe('toZoneDaily', () => {
