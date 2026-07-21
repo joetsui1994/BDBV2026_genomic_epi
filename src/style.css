@@ -214,23 +214,7 @@ body {
 .dist-head-title { flex: none; }
 .dist-head-sub { flex: 1 1 auto; min-width: 0; }
 .dist-tools { flex: none; display: flex; align-items: center; gap: 8px; }
-.dist-tools .dist-ct { margin: 0; }
 .dist-tools #dist-beyond { margin-left: 0; }
-
-/* Ct filter (positives): label + small number input, in the header (gap to the CSV button) */
-.dist-ct {
-  float: right; display: inline-flex; align-items: center; gap: 4px;
-  margin: -1px 10px 0 8px; text-transform: none; font-weight: 500;
-}
-.dist-ct label { font-size: 9px; color: var(--muted); }
-.dist-ct input {
-  width: 40px; font-size: 10px; padding: 1px 4px;
-  border: 1px solid var(--border); border-radius: 4px; color: var(--ink);
-}
-.dist-ct input:focus { outline: none; border-color: var(--terracotta); }
-/* Map-header Ct filter: same input as the distribution panel, but a flex item pushed
-   to the right of the tab strip (not floated). Shown only on Map tab + Positive metric. */
-.map-ct { float: none; margin: 0 2px 0 auto; align-self: center; }
 
 /* CSV export confirmation dialog (sample-distribution download) */
 .export-modal-overlay {
