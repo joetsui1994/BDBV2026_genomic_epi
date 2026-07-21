@@ -80,7 +80,7 @@ function timeTicks(pxWidth, t0, t1) {
  * @param {(scope:{zones:string[],province:?string})=>{series:Map<string,number>,tips:object[]}} resolveSeries
  * @param {object} [opts]
  */
-export function createTimeseriesPanel(containerId, domain, resolveSeries, { tips = [], provinceNames = [], onExtentChange = () => {}, onWindowChange = () => {}, onSettling = () => {}, onTransform = () => {} } = {}) {
+export function createTimeseriesPanel(containerId, domain, resolveSeries, { provinceNames = [], onExtentChange = () => {}, onWindowChange = () => {}, onSettling = () => {}, onTransform = () => {} } = {}) {
   const host = document.getElementById(containerId);
   host.replaceChildren();
 
@@ -105,7 +105,7 @@ export function createTimeseriesPanel(containerId, domain, resolveSeries, { tips
   legend.innerHTML = `<span><i style="background:${CONFIRMED_COLOR}"></i>Confirmed</span>`
     + `<span><i class="seq-dot" style="background:${SEQ_COLOR}"></i>Sequences</span>`;
 
-  const controls = document.createElement('div');   // top-left row: [toggle stack] + legend
+  const controls = document.createElement('div');   // top-left row: [province selector] + legend
   controls.className = 'dist-controls';
   controls.append(left, legend);
 
@@ -251,7 +251,7 @@ export function createTimeseriesPanel(containerId, domain, resolveSeries, { tips
     extentRaf = requestAnimationFrame(() => { extentRaf = 0; onExtentChange(phi); });
   }
 
-  // Recompute the effective max from the current selection/Ct, sync the tree fraction, re-render.
+  // Recompute the effective max from the current scope, sync the tree fraction, re-render.
   function applyExtent() {
     const ext = extentFraction(series, t0, t1, showBeyond);
     effMaxMs = ext.effMax;
@@ -298,7 +298,7 @@ export function createTimeseriesPanel(containerId, domain, resolveSeries, { tips
     overlay.className = 'export-modal-overlay';
     overlay.style.display = 'none';
     overlay.innerHTML = `
-      <div class="export-modal" role="dialog" aria-modal="true" aria-label="Download sample distribution">
+      <div class="export-modal" role="dialog" aria-modal="true" aria-label="Download confirmed cases">
         <h4>Download data</h4>
         <dl class="export-summary">
           <dt>Location</dt><dd data-k="location"></dd>
@@ -332,7 +332,7 @@ export function createTimeseriesPanel(containerId, domain, resolveSeries, { tips
     m.input.value = facts.filename;
     m.go.disabled = rows.length === 0;
     m.go.onclick = () => {
-      let name = (m.input.value || '').trim() || 'sample-distribution';
+      let name = (m.input.value || '').trim() || 'confirmed-cases';
       if (!/\.csv$/i.test(name)) name += '.csv';
       const blob = new Blob([buildCsvText(rows)], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
