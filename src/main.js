@@ -8,6 +8,7 @@ import { makeSplitter, makeColumnSplitters } from './splitter.js';
 import { makeCollapsibleColumn } from './panel-collapse.js';
 import { createNePanel } from './ne-panel.js';
 import { tallyZones } from './zone-tally.js';
+import { parseStatus, seriesTotal, toZoneDaily } from './status-data.js';
 
 // Parse the health-zone alias crosswalk (observed_name → canonical_nom) into a
 // normaliser. Health-zone names in the line-list / mobility / tree are mapped onto
@@ -20,34 +21,6 @@ function makeCanon(text) {
     if (observed && canonical) map.set(observed.toUpperCase().trim(), canonical.trim());
   }
   return (name) => map.get((name || '').toUpperCase().trim()) || name;
-}
-
-// Parse the line-list CSV into the rows the distribution panel needs. Columns are resolved by
-// HEADER NAME (sample_id, province, health_zone, health_area, status, date, ct) so an added or
-// reordered column can't silently shift the data. ct = RadiOne Ct (present only on Positive rows
-// where available). Statuses are normalised to the app's four categories.
-const STATUS_NORM = { 'Not yet run': 'Unclassified', 'Undetermined': 'Invalid' };
-function parseLinelist(text, canon) {
-  const lines = text.trim().split(/\r?\n/);
-  const head = lines[0].split(',').map((h) => h.trim());
-  const idx = (name) => head.indexOf(name);
-  const iId = idx('sample_id'), iZone = idx('health_zone'), iArea = idx('health_area'),
-        iStatus = idx('status'), iDate = idx('date'), iCt = idx('ct'), iRid = idx('row_id');
-  const out = [];
-  for (let i = 1; i < lines.length; i++) {
-    const c = lines[i].split(',');
-    const status = ((iStatus >= 0 ? c[iStatus] : '') || '').trim();
-    out.push({
-      row_id: iRid >= 0 ? (c[iRid] || '').trim() : '',
-      sample_id: iId >= 0 ? (c[iId] || '').trim() : '',
-      health_zone: canon(iZone >= 0 ? c[iZone] : ''),
-      health_area: iArea >= 0 ? c[iArea] : '',
-      status: STATUS_NORM[status] || status,
-      date: iDate >= 0 ? c[iDate] : '',
-      ct: iCt >= 0 ? c[iCt] : '',
-    });
-  }
-  return out;
 }
 
 // Parse the FlowMinder origin→destination matrix into per-zone flow lookups
@@ -79,37 +52,53 @@ function parseMobilityMatrix(text, canon) {
 // subpath (BASE_URL is '/' in dev, '/DRC-Ebola-genomic-epi/' in the build).
 const BASE = import.meta.env.BASE_URL;
 
-const [tips, meta, linelistText, aliasText, skygrid, exponential] = await Promise.all([
+const [tips, meta, statusText, aliasText, skygrid, exponential] = await Promise.all([
   fetch(`${BASE}data/ituri-tips.json`).then(r => r.json()),
   fetch(`${BASE}data/ituri-meta.json`).then(r => r.json()),
-  fetch(`${BASE}data/linelist_data.dhis.csv`).then(r => r.text()),   // DHIS line list (sole source)
+  fetch(`${BASE}data/status_confirmed.csv`).then(r => r.text()),   // derived aggregate (sole source)
   fetch(`${BASE}data/aliases.csv`).then(r => r.text()).catch(() => ''),   // crosswalk (optional)
   fetch(`${BASE}data/skygrid.json`).then(r => r.json()),
   fetch(`${BASE}data/exponential.json`).then(r => r.json()),
 ]);
 
 const canon = makeCanon(aliasText);
-const fullLinelist = parseLinelist(linelistText, canon);
-
-const linelist = fullLinelist;   // every parsed record is shown (no sample-collected filter)
-
-// Per-zone status counts + positive-Ct lists for the choropleth (full dataset; the brush
-// re-tallies a window via map.setDateWindow).
-const { zoneCounts, zonePosCt } = tallyZones(linelist);
+const status = parseStatus(statusText);
+const zoneDaily = toZoneDaily(status.zones);           // Map<UPPER Nom, Map<date,count>>
+const { zoneCounts } = tallyZones(zoneDaily, null);    // seed per-zone confirmed totals
+const up = (s) => (s || '').toUpperCase().trim();
 
 // Sequence (tree-tip) dates for the sample-distribution availability track — zone
 // canonicalised so they filter with the same selection as the bars.
-const realv = (v) => (v && v !== 'null') ? v : '';
 const seqTips = tips.filter(t => t.date).map(t => ({
   date: t.date,
-  health_zone: realv(t.health_zone) ? canon(t.health_zone) : '',
-  health_area: realv(t.health_area),
+  health_zone: (t.health_zone && t.health_zone !== 'null') ? canon(t.health_zone) : '',
+  health_area: (t.health_area && t.health_area !== 'null') ? t.health_area : '',
 }));
 
+// Histogram scope resolver: given a scope ({zones, province}), return the daily confirmed-count
+// series plus the sequence-track tips filtered to match. Zones merge; province falls back to the
+// province series; national is the default.
+function resolveSeries(scope) {
+  if (scope.zones && scope.zones.length) {
+    const merged = new Map();
+    const wanted = new Set(scope.zones.map(z => up(canon(z))));
+    for (const z of wanted) {
+      const dc = status.zones.get(z);
+      if (dc) for (const [d, n] of seriesTotal(dc)) merged.set(d, (merged.get(d) || 0) + n);
+    }
+    const tipsF = seqTips.filter(t => wanted.has(up(t.health_zone)));
+    return { series: merged, tips: tipsF };
+  }
+  if (scope.province) {
+    const dc = status.provinces.get(scope.province);
+    return { series: dc ? seriesTotal(dc) : new Map(), tips: seqTips };
+  }
+  return { series: seriesTotal(status.national), tips: seqTips };
+}
+
 // Markers are built from the tips themselves (grouped by health_area → zone).
-// The map's Ct input mirrors into the distribution panel (late-bound: ts is created below).
 let tsPanel = null;
-const map = createMapPanel('map-body', tips, { onCtChange: (t) => tsPanel?.setCtThreshold(t) });
+const map = createMapPanel('map-body', tips);
 
 // Health-zone risk choropleth + mobility arrows (standalone layers, under the
 // markers). Mobility loads after the risk layer because it reuses the zone
@@ -117,7 +106,7 @@ const map = createMapPanel('map-body', tips, { onCtChange: (t) => tsPanel?.setCt
 fetch(`${BASE}data/health-zones.geojson`)
   .then(r => r.json())
   .then(zones => {
-    map.addZoneLayer(zones, zoneCounts, zonePosCt, linelist);
+    map.addZoneLayer(zones, zoneCounts, zoneDaily);
     return fetch(`${BASE}data/flowminder__inflow__static.matrix.csv`)
       .then(r => r.text())
       .then(text => map.addMobilityLayer(parseMobilityMatrix(text, canon)));
@@ -133,8 +122,8 @@ function applyWindow(d0, d1) {
   tsPanel?.setWindow(d0, d1);
   nePanel?.setWindow(d0, d1);
 }
-const ts  = createTimeseriesPanel('timeseries-body', linelist, { minDate: meta.rootDate, maxDate: meta.mostRecentDate }, {
-  onCtChange: (t) => map.setCtThreshold(t), tips: seqTips,
+const ts  = createTimeseriesPanel('timeseries-body', { minDate: meta.rootDate, maxDate: meta.mostRecentDate }, resolveSeries, {
+  provinceNames: [...status.provinces.keys()],   // sequence-track tips flow through resolveSeries().tips, not an opt
   onExtentChange: (f) => treePanel?.setWidthFraction(f),
   onWindowChange: applyWindow,
   // Keep the Ne panel's x-axis aligned with the distribution's effective transform — this covers
@@ -145,7 +134,7 @@ const ts  = createTimeseriesPanel('timeseries-body', linelist, { minDate: meta.r
   // its brief re-converge flicker is masked (the chart hides itself).
   onSettling: (on) => document.getElementById('canvas-container')?.classList.toggle('settling-hide', on),
 });
-tsPanel = ts;   // late-bind for the map → distribution Ct sync
+tsPanel = ts;
 
 // Effective population size — below the phylogeny; shares the tree x-axis + brush window. Two
 // coalescent models overlaid, each toggleable (≥1 stays on): SkyGrid (green) + exponential (orange).
