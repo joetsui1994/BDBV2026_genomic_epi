@@ -1,7 +1,5 @@
 import { defineConfig } from 'vite';
 import { execSync } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
 
 // "Last updated" = the most recent commit touching public/data (falls back to the
 // build time if git history isn't available). Injected as __LAST_UPDATED__ at build

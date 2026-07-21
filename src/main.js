@@ -11,7 +11,7 @@ import { tallyZones } from './zone-tally.js';
 import { parseStatus, seriesTotal, toZoneDaily } from './status-data.js';
 
 // Parse the health-zone alias crosswalk (observed_name → canonical_nom) into a
-// normaliser. Health-zone names in the line-list / mobility / tree are mapped onto
+// normaliser. Health-zone names in the mobility / tree data are mapped onto
 // the geojson's canonical `Nom` so every source joins. Unknown names pass through.
 // Columns: 0 observed_name, 1 canonical_nom, 2 source_dataset, 3 notes.
 function makeCanon(text) {
