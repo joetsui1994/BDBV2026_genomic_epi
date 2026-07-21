@@ -131,8 +131,10 @@ function applyWindow(d0, d1) {
   tsPanel?.setWindow(d0, d1);
   nePanel?.setWindow(d0, d1);
 }
+let coordinator = null;   // late-bound below; lets the distribution panel's "clear" button drop the selection
 const ts  = createTimeseriesPanel('timeseries-body', { minDate: meta.rootDate, maxDate: meta.mostRecentDate }, resolveSeries, {
   provinceNames: [...status.provinces.keys()],   // sequence-track tips flow through resolveSeries().tips, not an opt
+  onDeselect: () => coordinator?.clearSelection(),   // "clear" button → same deselect as a map background click
   onExtentChange: (f) => treePanel?.setWidthFraction(f),
   onWindowChange: applyWindow,
   // Keep the Ne panel's x-axis aligned with the distribution's effective transform — this covers
@@ -160,7 +162,7 @@ treePanel = tree;
 // Floating node-info card pinned to the tree panel.
 const nodeInfo = createNodeInfo('tree-body', { mostRecentDate: meta.mostRecentDate, canon });
 
-startCoordinator(tree, map, ts, meta, tips, canon, nodeInfo, nePanel);
+coordinator = startCoordinator(tree, map, ts, meta, tips, canon, nodeInfo, nePanel);
 
 // Lock the Ne panel's x-axis to the tree's live view transform (aligns it with the tree +
 // distribution panels). Seed it with the current transform, then track every view change.

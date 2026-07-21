@@ -147,7 +147,7 @@ export function createMapPanel(containerId, tips) {
   // One always-present, always-clickable GeoJSON layer; its style follows state
   // (risk colour on/off, selected outline) so zones stay selectable even when the
   // choropleth colour is toggled off.
-  let zoneLayer = null, metric = 'risk', METRICS = null;   // current choropleth metric + definitions
+  let zoneLayer = null, metric = 'confirmed', METRICS = null;   // current choropleth metric + definitions (Confirmed cases by default)
   let choroLegend = null, choroLegendDiv = null;
   let zoneCounts = new Map();        // upper Nom → {confirmed,total} (dynamic; windowed by the brush)
   let zoneDaily = new Map();         // upper Nom → (dateStr → confirmed) for windowed re-tally (set in addZoneLayer)
@@ -401,7 +401,7 @@ export function createMapPanel(containerId, tips) {
       // metric button group: Off + Relative risk + Confirmed cases.
       const SHORT = { off: 'Off', risk: 'Risk', confirmed: 'Cases' };
       const FULL  = { off: 'Hide colour (zones stay clickable)', risk: 'Relative risk', confirmed: 'Confirmed cases' };
-      const ORDER_MAIN = ['off', 'risk', 'confirmed'];
+      const ORDER_MAIN = ['off', 'confirmed', 'risk'];
       let groupWrap = null;
       const buildGroup = () => {
         if (!groupWrap) return;

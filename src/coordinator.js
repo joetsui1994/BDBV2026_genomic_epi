@@ -98,4 +98,8 @@ export function startCoordinator(tree, map, ts, meta, tips = [], canon = (v) => 
     map.highlightZones([...zones]);
     ts.setZones([...zones]);
   });
+
+  // Expose the same clear used by the map's background/toggle deselect, so external controls
+  // (e.g. the distribution panel's "clear" button) can drop the current location selection.
+  return { clearSelection: clearAll };
 }

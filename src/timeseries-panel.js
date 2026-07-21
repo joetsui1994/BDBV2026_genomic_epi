@@ -80,7 +80,7 @@ function timeTicks(pxWidth, t0, t1) {
  * @param {(scope:{zones:string[],province:?string})=>{series:Map<string,number>,tips:object[]}} resolveSeries
  * @param {object} [opts]
  */
-export function createTimeseriesPanel(containerId, domain, resolveSeries, { provinceNames = [], onExtentChange = () => {}, onWindowChange = () => {}, onSettling = () => {}, onTransform = () => {} } = {}) {
+export function createTimeseriesPanel(containerId, domain, resolveSeries, { provinceNames = [], onDeselect = () => {}, onExtentChange = () => {}, onWindowChange = () => {}, onSettling = () => {}, onTransform = () => {} } = {}) {
   const host = document.getElementById(containerId);
   host.replaceChildren();
 
@@ -99,6 +99,11 @@ export function createTimeseriesPanel(containerId, domain, resolveSeries, { prov
   for (const p of provinceNames) provSel.append(new Option(p, p));
   provSel.addEventListener('change', () => setProvince(provSel.value || null));
   left.append(provSel);
+
+  // Header "clear" button (in index.html, after the not-shown note): drops the active location
+  // selection. Hidden unless a zone/tip location is selected (toggled in reresolve()).
+  const clearBtn = document.getElementById('dist-clear');
+  if (clearBtn) clearBtn.onclick = () => onDeselect();
 
   const legend = document.createElement('div');
   legend.className = 'dist-legend';
@@ -578,6 +583,7 @@ export function createTimeseriesPanel(containerId, domain, resolveSeries, { prov
     resolved = resolveSeries(scope); series = resolved.series; selTips = resolved.tips;
     const scopeEl = document.getElementById('dist-scope');
     if (scopeEl) scopeEl.textContent = scope.zones.length ? `· ${scope.zones.join(', ')}` : scope.province ? `· ${scope.province}` : '';
+    if (clearBtn) clearBtn.style.visibility = scope.zones.length ? 'visible' : 'hidden';   // reserve space; toggle paint only
     applyExtent();
   }
   function setProvince(name) { scope = { zones: [], province: name || null }; if (provSel.value !== (name || '')) provSel.value = name || ''; reresolve(); }
@@ -585,6 +591,9 @@ export function createTimeseriesPanel(containerId, domain, resolveSeries, { prov
     const zs = [...new Set(zones || [])];
     scope = zs.length ? { zones: zs, province: null } : { zones: [], province: scope.province };
     if (zs.length && provSel.value !== '') provSel.value = '';
+    // A map/tree location selection overrides province scope, so disable the selector while one is
+    // active (re-enabled when the selection is cleared → setZones([])).
+    provSel.disabled = zs.length > 0;
     reresolve();
   }
 
