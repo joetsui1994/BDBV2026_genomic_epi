@@ -1,0 +1,82 @@
+# Scheduled data sync: pull the latest status_aggregated.csv from the private source repo, rebuild
+# the public derived artifact (public/data/status_confirmed.csv), and commit it when it changes.
+# The commit is pushed with DATA_SYNC_TOKEN (a classic PAT), so the push triggers deploy.yml and the
+# GitHub Pages site redeploys with the fresh data.
+#
+# One-time setup (repo → Settings → Secrets and variables → Actions):
+#   DATA_SYNC_TOKEN — a classic personal-access-token with the `repo` scope, owned by someone with
+#   read access to INRB-UMIE/BDBV2026-Processed_Sensitive_Data. If that org enforces SAML SSO, also
+#   "Configure SSO → Authorize" the token for INRB-UMIE. The same token pushes to THIS repo (which is
+#   what fires deploy.yml — a GITHUB_TOKEN push would not).
+#
+# If the upstream data introduces a health zone with no geojson match, build-status.mjs fails the run
+# (::error:: annotation, nothing committed); add the alias to public/data/aliases.csv and re-run.
+
+name: Sync status data
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6h (00:00, 06:00, 12:00, 18:00 UTC); GitHub cron is best-effort
+  workflow_dispatch:
+
+# Never run two syncs at once (a slow run must not race a newer one's push).
+concurrency:
+  group: sync-status-data
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  SOURCE_REPO: INRB-UMIE/BDBV2026-Processed_Sensitive_Data
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      # Check out this repo with the PAT so the later `git push` is authenticated as the PAT owner
+      # (that is what makes the push trigger deploy.yml).
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.DATA_SYNC_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Fetch only the two files build-status needs (manifest + the dated status_aggregated.csv it
+      # points to) via the contents API — no heavyweight checkout of the private repo's plots/PDFs.
+      - name: Fetch latest status_aggregated.csv from the private repo
+        env:
+          GH_TOKEN: ${{ secrets.DATA_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p _private/outputs
+          gh api "repos/${SOURCE_REPO}/contents/outputs/manifest.json" \
+            -H "Accept: application/vnd.github.raw" > _private/outputs/manifest.json
+          SRC_CSV="$(jq -r '.source_csv' _private/outputs/manifest.json)"
+          if [ -z "$SRC_CSV" ] || [ "$SRC_CSV" = "null" ]; then
+            echo "::error::manifest.json has no source_csv"; exit 1
+          fi
+          echo "Latest source CSV: $SRC_CSV"
+          mkdir -p "_private/outputs/$(dirname "$SRC_CSV")"
+          gh api "repos/${SOURCE_REPO}/contents/outputs/${SRC_CSV}" \
+            -H "Accept: application/vnd.github.raw" > "_private/outputs/${SRC_CSV}"
+
+      # Rebuild the derived artifact. Pure Node (no npm install needed); exits non-zero without
+      # writing if a health zone is unmatched, which fails the job before anything is committed.
+      - name: Build derived status_confirmed.csv
+        run: node scripts/build-status.mjs "${GITHUB_WORKSPACE}/_private"
+
+      - name: Commit and push if changed
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- public/data/status_confirmed.csv; then
+            echo "status_confirmed.csv unchanged — nothing to sync."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data/status_confirmed.csv
+          git commit -m "data: refresh status_confirmed.csv from upstream"
+          git push

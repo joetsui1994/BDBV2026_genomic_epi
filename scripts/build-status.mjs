@@ -1,8 +1,10 @@
 // scripts/build-status.mjs
 // Build public/data/status_confirmed.csv from the private repo's latest status_aggregated.csv.
 // Reads outputs/manifest.json to find the newest dated CSV, filters to confirmed cases (observed/
-// imputed split via status-lib), canonicalises health-zone names onto the geojson Nom via
-// aliases.csv, and logs any zone that doesn't match a polygon (it will be absent from the map).
+// imputed split via status-lib), and canonicalises health-zone names onto the geojson Nom via
+// aliases.csv. If any health zone doesn't match a geojson Nom it FAILS (exit 1) WITHOUT writing —
+// so the CI sync never ships data with a silently-missing zone; add the alias to aliases.csv and
+// re-run. In GitHub Actions the failure is emitted as a ::error:: annotation.
 // Usage: node scripts/build-status.mjs [SOURCE_REPO_DIR]   (or `npm run data:status`)
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -38,9 +40,14 @@ for (const r of rows) {
   if (!nomSet.has(r.area.toUpperCase().trim())) unmatched.add(r.area);
 }
 
+// Unmatched zones would silently vanish from the map — fail loudly and write nothing so the run
+// (and the CI sync) stops until an alias is added. GitHub Actions renders ::error:: as an annotation.
+if (unmatched.size) {
+  const list = [...unmatched].sort().join(', ');
+  const msg = `${unmatched.size} health zone(s) not matched to a geojson Nom — add to public/data/aliases.csv: ${list}`;
+  console.error(process.env.GITHUB_ACTIONS ? `::error::${msg}` : `✗ ${msg}`);
+  process.exit(1);
+}
+
 writeFileSync(join(ROOT, 'public/data/status_confirmed.csv'), serializeDerived(rows));
 console.log(`✓ status_confirmed.csv: ${rows.length} rows from ${manifest.source_csv}`);
-if (unmatched.size) {
-  console.warn(`⚠ ${unmatched.size} health zone(s) not matched to a geojson Nom (add to aliases.csv):`);
-  console.warn('  ' + [...unmatched].sort().join(', '));
-}
